@@ -5,23 +5,31 @@ use std::collections::HashSet;
 #[derive(Debug, Clone)]
 pub struct Player {
     hand: Vec<Card>,
+    max_card_count: usize,
 }
 
 impl Player {
     /// Create a new `Player`.
     pub fn new() -> Self {
-        Player { hand: Vec::new() }
+        Player {
+            hand: Vec::new(),
+            max_card_count: 0,
+        }
     }
 
     /// Create a new `Player` and assign cards at the same time.
     pub fn new_with_hand(cards: Vec<Card>) -> Self {
-        Player { hand: cards }
+        Player {
+            max_card_count: cards.len(),
+            hand: cards,
+        }
     }
 
     /// Create a new `Player` with `hand_size` capacity for cards.
     pub fn with_capacity(hand_size: usize) -> Self {
         Player {
             hand: Vec::with_capacity(hand_size),
+            max_card_count: hand_size,
         }
     }
 
@@ -44,19 +52,20 @@ impl Player {
     where
         T: Iterator<Item = Card>,
     {
-        let pre_assign_capacity = self.capacity();
         self.hand.extend(cards);
-        let post_assign_len = self.hand.len();
-        if pre_assign_capacity != 0 {
+        if self.max_card_count != 0 {
             assert_eq!(
-                pre_assign_capacity, post_assign_len,
+                self.max_card_count,
+                self.hand.len(),
                 "tried to assign different number of cards than the capacity of the player"
             );
+        } else {
+            self.max_card_count = self.hand.len();
         }
     }
 
     pub fn capacity(&self) -> usize {
-        self.hand.capacity()
+        self.max_card_count
     }
 
     pub fn has_card(&self, card: &Card) -> bool {

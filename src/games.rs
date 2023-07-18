@@ -11,6 +11,7 @@ pub struct BadamSat {
     players: Vec<Player>,
     playing_area: PlayingArea,
     decks: usize,
+    player_count: usize,
 }
 
 /// State of the [`BadamSat`].
@@ -147,6 +148,7 @@ impl BadamSat {
             players: player_vec,
             playing_area: PlayingArea::with_deck_capacity(decks),
             decks,
+            player_count: players,
         }
     }
 
@@ -228,9 +230,16 @@ impl BadamSat {
         let mut deck = StandardDeckBuilder::new().subdecks(self.decks).build();
         let mut rng = thread_rng();
         deck.shuffle(&mut rng);
+        let num_cards = self.decks * 52;
+        let (cards_per_player, leftover) =
+            (num_cards / self.player_count, num_cards % self.player_count);
         let mut cards_taken = 0;
-        for player in self.players.iter_mut() {
-            let cards_to_take = player.capacity();
+        for (idx, player) in self.players.iter_mut().enumerate() {
+            let cards_to_take = if idx < leftover {
+                cards_per_player + 1
+            } else {
+                cards_per_player
+            };
             player.assign_cards(deck.iter().skip(cards_taken).take(cards_to_take).cloned());
             cards_taken += cards_to_take;
         }
