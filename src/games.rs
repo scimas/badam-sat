@@ -117,6 +117,12 @@ impl PlayingArea {
         }
         Err(InvalidPlay)
     }
+
+    fn is_empty(&self) -> bool {
+        self.card_stacks
+            .values()
+            .all(|stacks| stacks.iter().all(|stack| matches!(stack, CardStack::Empty)))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -323,6 +329,16 @@ impl BadamSat {
             .collect();
         if actions.len() == 0 {
             actions.insert(Transition::Pass { player: player_idx });
+        }
+        // first move must be 7 of hearts
+        if self.playing_area.is_empty() {
+            actions.retain(|action| match action {
+                Transition::DealCards => false,
+                Transition::Play { card, .. } => {
+                    card == &Card::new_normal(Suit::Hearts, Rank::new(7))
+                }
+                Transition::Pass { .. } => true,
+            })
         }
         Some(actions)
     }
