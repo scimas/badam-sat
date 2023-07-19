@@ -56,7 +56,7 @@ impl PlayingArea {
 
     /// Try to play a [`Card`].
     fn try_play(&mut self, card: Card) -> Result<(), InvalidPlay> {
-        let stacks = self.card_stacks.get_mut(&card.suit().unwrap()).unwrap();
+        let stacks = self.card_stacks.get_mut(card.suit().unwrap()).unwrap();
         for stack in stacks.iter_mut() {
             match stack {
                 CardStack::Empty => {
@@ -321,13 +321,12 @@ impl BadamSat {
         let player_cards = self.players[player_idx].unique_cards_in_hand();
         let mut actions: HashSet<Transition> = valid_cards
             .intersection(&player_cards)
-            .into_iter()
             .map(|card| Transition::Play {
                 player: player_idx,
                 card: *card,
             })
             .collect();
-        if actions.len() == 0 {
+        if actions.is_empty() {
             actions.insert(Transition::Pass { player: player_idx });
         }
         // first move must be 7 of hearts
