@@ -79,6 +79,10 @@ impl Player {
     pub fn hand_len(&self) -> usize {
         self.hand.len()
     }
+
+    pub fn hand(&self) -> &[Card] {
+        &self.hand
+    }
 }
 
 impl Default for Player {

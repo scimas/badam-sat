@@ -346,6 +346,10 @@ impl BadamSat {
     pub fn playing_area(&self) -> &PlayingArea {
         &self.playing_area
     }
+
+    pub fn hand_of_player(&self, player: usize) -> Option<&[Card]> {
+        self.players.get(player).map(|player| player.hand())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
