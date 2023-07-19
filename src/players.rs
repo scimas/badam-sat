@@ -43,9 +43,9 @@ impl Player {
     /// # Example
     /// ```rust
     /// use badam_sat::players::Player;
-    /// use badam_sat::cards::{Suit, cards_for_suit};
-    /// let mut player = Player::with_capacity(13);
-    /// let cards = cards_for_suit(&Suit::Clubs);
+    /// use card_deck::standard_deck::{Card, Suit, Rank};
+    /// let mut player = Player::with_capacity(2);
+    /// let cards = [Card::new_normal(Suit::Hearts, Rank::new(12)), Card::new_normal(Suit::Spades, Rank::new(2))];
     /// player.assign_cards(cards.into_iter());
     /// ```
     pub fn assign_cards<T>(&mut self, cards: T)
