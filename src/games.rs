@@ -29,6 +29,7 @@ enum GameState {
 
 /// Transitions between [`GameState`]s.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Transition {
     DealCards,
     Play { player: usize, card: Card },
@@ -37,6 +38,7 @@ pub enum Transition {
 
 /// Played [`Card`]s in a game.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct PlayingArea {
     card_stacks: HashMap<Suit, Vec<CardStack>>,
 }
@@ -123,6 +125,7 @@ struct InvalidPlay;
 
 /// Played cards belonging to a single [`Suit`].
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum CardStack {
     Empty,
     SevenOnly,
