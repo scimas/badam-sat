@@ -37,9 +37,9 @@ pub enum Transition {
 }
 
 /// Played [`Card`]s in a game.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct PlayingArea {
+pub struct PlayingArea {
     card_stacks: HashMap<Suit, Vec<CardStack>>,
 }
 
@@ -124,7 +124,7 @@ impl PlayingArea {
 struct InvalidPlay;
 
 /// Played cards belonging to a single [`Suit`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum CardStack {
     Empty,
@@ -325,6 +325,10 @@ impl BadamSat {
             actions.insert(Transition::Pass { player: player_idx });
         }
         Some(actions)
+    }
+
+    pub fn playing_area(&self) -> &PlayingArea {
+        &self.playing_area
     }
 }
 
