@@ -123,6 +123,10 @@ impl PlayingArea {
             .values()
             .all(|stacks| stacks.iter().all(|stack| matches!(stack, CardStack::Empty)))
     }
+
+    pub fn stacks(&self) -> &HashMap<Suit, Vec<CardStack>> {
+        &self.card_stacks
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -132,7 +136,7 @@ struct InvalidPlay;
 /// Played cards belonging to a single [`Suit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-enum CardStack {
+pub enum CardStack {
     Empty,
     SevenOnly,
     LowOnly(Card),
@@ -190,6 +194,7 @@ impl BadamSat {
                     Err(InvalidTransition)
                 } else {
                     self.playing_area.try_play(*card).unwrap();
+                    self.players[*player].remove_card(card);
                     self.state = match self.find_valid_actions() {
                         Some(valid_actions) => GameState::InPlay {
                             player: (player + 1) % self.players.len(),
@@ -326,9 +331,6 @@ impl BadamSat {
                 card: *card,
             })
             .collect();
-        if actions.is_empty() {
-            actions.insert(Transition::Pass { player: player_idx });
-        }
         // first move must be 7 of hearts
         if self.playing_area.is_empty() {
             actions.retain(|action| match action {
@@ -338,6 +340,9 @@ impl BadamSat {
                 }
                 Transition::Pass { .. } => true,
             })
+        }
+        if actions.is_empty() {
+            actions.insert(Transition::Pass { player: player_idx });
         }
         Some(actions)
     }

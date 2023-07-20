@@ -64,6 +64,11 @@ impl Player {
         }
     }
 
+    pub fn remove_card(&mut self, card: &Card) {
+        let idx = self.hand.iter().position(|hcard| hcard == card).unwrap();
+        self.hand.remove(idx);
+    }
+
     pub fn capacity(&self) -> usize {
         self.max_card_count
     }
