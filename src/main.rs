@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, fs::File, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     async_trait,
@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
     Json, RequestPartsExt, Router, TypedHeader,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use badam_sat::games::{BadamSat, PlayingArea, Transition};
 use card_deck::standard_deck::Card;
 use clap::Parser;
@@ -41,6 +42,10 @@ struct Args {
     #[arg(long)]
     signing_key: String,
 
+    /// Path to the directory containing the TLS key and certificate
+    #[arg(long)]
+    tls_dir: String,
+
     /// Address for the server
     #[arg(long, default_value = "127.0.0.1:8080")]
     address: String,
@@ -56,6 +61,14 @@ async fn main() {
 
     let mut sign_key_file = File::open(&args.signing_key).unwrap();
     let paseto_key = read_key_pair(&mut sign_key_file).unwrap();
+
+    let tls_config = RustlsConfig::from_pem_file(
+        PathBuf::from(&args.tls_dir).join("cert.pem"),
+        PathBuf::from(&args.tls_dir).join("key.pem"),
+    )
+    .await
+    .unwrap();
+
     let server = Server {
         key_pair: paseto_key,
         players: HashMap::with_capacity(args.players),
@@ -74,7 +87,7 @@ async fn main() {
         .with_state(Arc::new(RwLock::new(server)));
 
     let address: SocketAddr = args.address.parse().unwrap();
-    axum::Server::bind(&address)
+    axum_server::bind_rustls(address, tls_config)
         .serve(router.into_make_service())
         .await
         .unwrap();
