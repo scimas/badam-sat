@@ -42,13 +42,19 @@ struct Args {
     #[arg(long)]
     signing_key: String,
 
-    /// Path to the directory containing the TLS key and certificate
-    #[arg(long)]
-    tls_dir: String,
-
     /// Address for the server
     #[arg(long, default_value = "127.0.0.1:8080")]
     address: String,
+
+    /// Use TLS
+    #[arg(long)]
+    secure: bool,
+
+    /// Path to the directory containing the TLS key and certificate
+    ///
+    /// Required when using the `--secure` option
+    #[arg(long)]
+    tls_dir: Option<String>,
 }
 
 #[tokio::main]
@@ -61,13 +67,6 @@ async fn main() {
 
     let mut sign_key_file = File::open(&args.signing_key).unwrap();
     let paseto_key = read_key_pair(&mut sign_key_file).unwrap();
-
-    let tls_config = RustlsConfig::from_pem_file(
-        PathBuf::from(&args.tls_dir).join("cert.pem"),
-        PathBuf::from(&args.tls_dir).join("key.pem"),
-    )
-    .await
-    .unwrap();
 
     let server = Server {
         key_pair: paseto_key,
@@ -87,10 +86,27 @@ async fn main() {
         .with_state(Arc::new(RwLock::new(server)));
 
     let address: SocketAddr = args.address.parse().unwrap();
-    axum_server::bind_rustls(address, tls_config)
-        .serve(router.into_make_service())
+
+    if args.secure {
+        let tls_dir = args
+            .tls_dir
+            .expect("`--tls-dir` needs to be specified when using `--secure`");
+        let tls_config = RustlsConfig::from_pem_file(
+            PathBuf::from(&tls_dir).join("cert.pem"),
+            PathBuf::from(&tls_dir).join("key.pem"),
+        )
         .await
         .unwrap();
+        axum_server::bind_rustls(address, tls_config)
+            .serve(router.into_make_service())
+            .await
+            .unwrap();
+    } else {
+        axum::Server::bind(&address)
+            .serve(router.into_make_service())
+            .await
+            .unwrap();
+    };
 }
 
 fn read_key_pair<T: std::io::Read>(reader: &mut T) -> std::io::Result<AsymmetricKeyPair<V4>> {
