@@ -66,7 +66,7 @@ impl Component for Player {
                     }).collect::<Html>()
                 }
                 </div>
-                <button class="playable" onclick={ctx.link().callback(|_| Msg::Pass)}>{"Pass"}</button>
+                <button onclick={ctx.link().callback(|_| Msg::Pass)}>{"Pass"}</button>
             </>
         }
     }

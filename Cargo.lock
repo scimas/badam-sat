@@ -56,7 +56,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "badam_sat_client"
+name = "badam-sat-client"
 version = "0.1.0"
 dependencies = [
  "badam-sat",
