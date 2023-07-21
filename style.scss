@@ -1,0 +1,45 @@
+.hand {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas: "spades hearts clubs diamonds";
+}
+
+.spades {
+    grid-area: spades;
+}
+
+.hearts {
+    grid-area: hearts;
+    color: red;
+}
+
+.clubs {
+    grid-area: clubs;
+}
+
+.diamonds {
+    grid-area: diamonds;
+    color: red;
+}
+
+.hand_stack {
+    font-size: 2em;
+    justify-self: center;
+}
+
+.play_area {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas: "spades hearts clubs diamonds";
+    justify-items: center;
+}
+
+.stack {
+    display: inline-block;
+    font-size: 2em;
+}
+
+.playable {
+    font-size: 0.8em;
+    color: inherit;
+}
