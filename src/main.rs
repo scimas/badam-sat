@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fs::File, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap, fs::File, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration,
+};
 
 use axum::{
     async_trait,
@@ -21,7 +23,7 @@ use pasetors::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use simple_logger::SimpleLogger;
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 use tower_http::services::ServeDir;
 
 /// बदाम सात game server
@@ -68,12 +70,15 @@ async fn main() {
     let mut sign_key_file = File::open(&args.signing_key).unwrap();
     let paseto_key = read_key_pair(&mut sign_key_file).unwrap();
 
+    let game = BadamSat::with_player_and_deck_capacity(args.players, args.decks);
+    let (sender, _) = watch::channel(game.playing_area().clone());
     let server = Server {
         key_pair: paseto_key,
         players: HashMap::with_capacity(args.players),
         tokens: Vec::with_capacity(args.players),
-        game: BadamSat::with_player_and_deck_capacity(args.players, args.decks),
+        game,
         max_player_count: args.players,
+        play_area_sender: sender,
     };
 
     let serve_dir = ServeDir::new("dist");
@@ -135,6 +140,7 @@ struct Server {
     tokens: Vec<String>,
     game: BadamSat,
     max_player_count: usize,
+    play_area_sender: watch::Sender<PlayingArea>,
 }
 
 impl Server {
@@ -193,7 +199,11 @@ impl Server {
             Action::Pass => Transition::Pass { player },
         };
         match self.game.update(transition) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.play_area_sender
+                    .send_replace(self.playing_area().clone());
+                Ok(())
+            }
             Err(_) => Err(ClientError::InvalidMove),
         }
     }
@@ -202,8 +212,8 @@ impl Server {
         self.game.playing_area()
     }
 
-    fn hand_of_player(&self, player: usize) -> Option<Vec<Card>> {
-        self.game.hand_of_player(player).map(|hand| hand.to_vec())
+    fn hand_of_player(&self, player: usize) -> Vec<Card> {
+        self.game.hand_of_player(player).to_vec()
     }
 }
 
@@ -232,7 +242,14 @@ async fn play(
 
 async fn playing_area(State(server): State<Arc<RwLock<Server>>>) -> Json<PlayingArea> {
     log::info!("received playing_area request");
-    Json(server.read().await.playing_area().clone())
+    let mut receiver = server.read().await.play_area_sender.subscribe();
+    let play_area = {
+        tokio::select! {
+            _ = receiver.changed() => receiver.borrow_and_update().clone(),
+            _ = tokio::time::sleep(Duration::from_secs(10)) => receiver.borrow().clone()
+        }
+    };
+    Json(play_area)
 }
 
 async fn hand_of_player(
@@ -240,7 +257,7 @@ async fn hand_of_player(
     State(server): State<Arc<RwLock<Server>>>,
 ) -> Json<Vec<Card>> {
     log::info!("received hand request from player {}", player_id.id);
-    Json(server.read().await.hand_of_player(player_id.id).unwrap())
+    Json(server.read().await.hand_of_player(player_id.id))
 }
 
 #[derive(Debug, Serialize)]

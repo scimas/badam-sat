@@ -186,7 +186,7 @@ dependencies = [
 [[package]]
 name = "badam-sat"
 version = "0.1.0"
-source = "git+https://github.com/scimas/badam-sat.git#9f34c7a04d6945cd26d2ed01f5cd3cfe5e4256c2"
+source = "git+https://github.com/scimas/badam-sat.git#a9b7f1b617be46cf36979d0313f13e3fdde683c0"
 dependencies = [
  "card-deck",
  "rand",
