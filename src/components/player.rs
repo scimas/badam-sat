@@ -1,10 +1,10 @@
 use std::{collections::HashMap, time::Duration};
 
 use card_deck::standard_deck::{Card, Rank, Suit};
-use futures_util::{FutureExt, Stream, StreamExt};
+use futures_util::FutureExt;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
-use yew::{html, Component, Html};
+use yew::{html, platform::time::sleep, Component, Html};
 
 pub struct Player {
     token: String,
@@ -17,7 +17,6 @@ pub enum Msg {
     Hand(HashMap<Suit, Vec<Card>>),
     Play(Card),
     Pass,
-    Ignore,
 }
 
 impl Player {
@@ -42,8 +41,6 @@ impl Component for Player {
             .into_iter()
             .map(|suit| (suit, Vec::new()))
             .collect();
-        ctx.link()
-            .send_stream(trigger_hand_query().map(|_| Msg::QueryHand));
         Player {
             token: String::new(),
             hand,
@@ -73,30 +70,26 @@ impl Component for Player {
 
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Ignore => false,
             Msg::Joined(token) => {
                 self.token = token;
+                ctx.link().send_message(Msg::QueryHand);
                 true
             }
             Msg::QueryHand => {
                 {
                     let token = self.token.clone();
-                    ctx.link().send_future(async move {
-                        query_hand(&token)
-                            .map(|maybe_hand| {
-                                if let Some(h) = maybe_hand {
-                                    Msg::Hand(h)
-                                } else {
-                                    Msg::Ignore
-                                }
-                            })
-                            .await
-                    });
+                    ctx.link()
+                        .send_future(async move { query_hand(&token).map(Msg::Hand).await });
                 }
                 false
             }
             Msg::Hand(hand) => {
                 if self.hand == hand {
+                    let token = self.token.clone();
+                    ctx.link().send_future(async move {
+                        sleep(Duration::from_secs(5)).await;
+                        query_hand(&token).map(Msg::Hand).await
+                    });
                     false
                 } else {
                     self.hand = hand;
@@ -140,41 +133,29 @@ enum JoinResponse {
     },
 }
 
-fn trigger_hand_query() -> impl Stream<Item = ()> {
-    yew::platform::time::interval(Duration::from_secs(5))
-}
-
-async fn query_hand(token: &str) -> Option<HashMap<Suit, Vec<Card>>> {
-    match Request::get("/api/my_hand")
+async fn query_hand(token: &str) -> HashMap<Suit, Vec<Card>> {
+    let response = Request::get("/api/my_hand")
         .header("Authorization", &format!("Bearer {token}"))
         .send()
         .await
-    {
-        Ok(response) => {
-            let maybe_cards: Option<Vec<Card>> = response.json().await.ok();
-            if let Some(mut cards) = maybe_cards {
-                cards.sort_by(card_comparator);
-                cards.reverse();
-                let hand: HashMap<Suit, Vec<Card>> = Suit::all_suits()
-                    .into_iter()
-                    .map(|suit| {
-                        (
-                            suit,
-                            cards
-                                .iter()
-                                .filter(|card| card.suit().unwrap() == &suit)
-                                .cloned()
-                                .collect::<Vec<Card>>(),
-                        )
-                    })
-                    .collect();
-                Some(hand)
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
+        .unwrap();
+    let mut cards: Vec<Card> = response.json().await.unwrap();
+    cards.sort_by(card_comparator);
+    cards.reverse();
+    let hand: HashMap<Suit, Vec<Card>> = Suit::all_suits()
+        .into_iter()
+        .map(|suit| {
+            (
+                suit,
+                cards
+                    .iter()
+                    .filter(|card| card.suit().unwrap() == &suit)
+                    .cloned()
+                    .collect::<Vec<Card>>(),
+            )
+        })
+        .collect();
+    hand
 }
 
 async fn play(token: &str, action: &Action) {

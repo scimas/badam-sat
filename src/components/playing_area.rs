@@ -1,8 +1,8 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use badam_sat::games::CardStack;
 use card_deck::standard_deck::{Card, Rank, Suit};
-use futures_util::{FutureExt, Stream, StreamExt};
+use futures_util::FutureExt;
 use gloo_net::http::Request;
 use yew::{html, Component, Html};
 
@@ -13,7 +13,6 @@ pub struct PlayingArea {
 pub enum Msg {
     QueryPlayArea,
     PlayArea(HashMap<Suit, Vec<CardStack>>),
-    Ignore,
 }
 
 impl Component for PlayingArea {
@@ -21,8 +20,7 @@ impl Component for PlayingArea {
     type Properties = ();
 
     fn create(ctx: &yew::Context<Self>) -> Self {
-        ctx.link()
-            .send_stream(trigger_play_area_query().map(|_| Msg::QueryPlayArea));
+        ctx.link().send_message(Msg::QueryPlayArea);
         let card_stacks = Suit::all_suits()
             .into_iter()
             .map(|suit| (suit, Vec::new()))
@@ -56,45 +54,26 @@ impl Component for PlayingArea {
 
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Ignore => false,
             Msg::QueryPlayArea => {
-                ctx.link()
-                    .send_future(query_play_area().map(|maybe_stacks| {
-                        if let Some(stacks) = maybe_stacks {
-                            Msg::PlayArea(stacks)
-                        } else {
-                            Msg::Ignore
-                        }
-                    }));
+                ctx.link().send_future(query_play_area().map(Msg::PlayArea));
                 false
             }
             Msg::PlayArea(stacks) => {
-                if self.card_stacks == stacks {
-                    false
-                } else {
+                ctx.link().send_message(Msg::QueryPlayArea);
+                if self.card_stacks != stacks {
                     self.card_stacks = stacks;
-                    true
+                    return true;
                 }
+                false
             }
         }
     }
 }
 
-fn trigger_play_area_query() -> impl Stream<Item = ()> {
-    yew::platform::time::interval(Duration::from_secs(1))
-}
-
-async fn query_play_area() -> Option<HashMap<Suit, Vec<CardStack>>> {
-    match Request::get("/api/playing_area").send().await {
-        Ok(response) => {
-            let maybe_stacks: Result<badam_sat::games::PlayingArea, _> = response.json().await;
-            match maybe_stacks {
-                Ok(area) => Some(area.stacks().clone()),
-                Err(_) => None,
-            }
-        }
-        Err(_) => None,
-    }
+async fn query_play_area() -> HashMap<Suit, Vec<CardStack>> {
+    let response = Request::get("/api/playing_area").send().await.unwrap();
+    let stacks: badam_sat::games::PlayingArea = response.json().await.unwrap();
+    stacks.stacks().clone()
 }
 
 fn stack_to_html(suit: &Suit, stack: &CardStack) -> Html {
