@@ -71,14 +71,16 @@ async fn main() {
     let paseto_key = read_key_pair(&mut sign_key_file).unwrap();
 
     let game = BadamSat::with_player_and_deck_capacity(args.players, args.decks);
-    let (sender, _) = watch::channel(game.playing_area().clone());
+    let (play_area_sender, _) = watch::channel(game.playing_area().clone());
+    let (winner_sender, _) = watch::channel(json!({}));
     let server = Server {
         key_pair: paseto_key,
         players: HashMap::with_capacity(args.players),
         tokens: Vec::with_capacity(args.players),
         game,
         max_player_count: args.players,
-        play_area_sender: sender,
+        play_area_sender,
+        winner_sender,
     };
 
     let serve_dir = ServeDir::new("dist");
@@ -87,6 +89,7 @@ async fn main() {
         .route("/api/play", post(play))
         .route("/api/playing_area", get(playing_area))
         .route("/api/my_hand", get(hand_of_player))
+        .route("/api/winner", get(winner))
         .fallback_service(serve_dir)
         .with_state(Arc::new(RwLock::new(server)));
 
@@ -141,6 +144,7 @@ struct Server {
     game: BadamSat,
     max_player_count: usize,
     play_area_sender: watch::Sender<PlayingArea>,
+    winner_sender: watch::Sender<serde_json::Value>,
 }
 
 impl Server {
@@ -202,6 +206,9 @@ impl Server {
             Ok(_) => {
                 self.play_area_sender
                     .send_replace(self.playing_area().clone());
+                if let Some(id) = self.game.winner() {
+                    self.winner_sender.send_replace(json!({ "id": id }));
+                }
                 Ok(())
             }
             Err(_) => Err(ClientError::InvalidMove),
@@ -245,9 +252,10 @@ async fn playing_area(State(server): State<Arc<RwLock<Server>>>) -> Json<Playing
     let mut receiver = server.read().await.play_area_sender.subscribe();
     let play_area = {
         tokio::select! {
-            _ = receiver.changed() => receiver.borrow_and_update().clone(),
-            _ = tokio::time::sleep(Duration::from_secs(10)) => receiver.borrow().clone()
-        }
+            _ = receiver.changed() => (),
+            _ = tokio::time::sleep(Duration::from_secs(10)) => ()
+        };
+        receiver.borrow().clone()
     };
     Json(play_area)
 }
@@ -258,6 +266,16 @@ async fn hand_of_player(
 ) -> Json<Vec<Card>> {
     log::info!("received hand request from player {}", player_id.id);
     Json(server.read().await.hand_of_player(player_id.id))
+}
+
+async fn winner(State(server): State<Arc<RwLock<Server>>>) -> Json<serde_json::Value> {
+    log::info!("received winner request");
+    let mut receiver = server.read().await.winner_sender.subscribe();
+    let play_area = {
+        receiver.changed().await.unwrap();
+        receiver.borrow().clone()
+    };
+    Json(play_area)
 }
 
 #[derive(Debug, Serialize)]
