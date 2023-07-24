@@ -1,0 +1,2 @@
+[workspace]
+members = ["badam-sat", "badam-sat-server", "badam-sat-client"]
