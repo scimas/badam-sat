@@ -17,6 +17,7 @@ pub enum Msg {
     Hand(HashMap<Suit, Vec<Card>>),
     Play(Card),
     Pass,
+    QueryWinner,
 }
 
 impl Player {
@@ -37,6 +38,7 @@ impl Component for Player {
 
     fn create(ctx: &yew::Context<Self>) -> Self {
         ctx.link().send_future(Player::join().map(Msg::Joined));
+        ctx.link().send_message(Msg::QueryWinner);
         let hand = Suit::all_suits()
             .into_iter()
             .map(|suit| (suit, Vec::new()))
@@ -115,6 +117,10 @@ impl Component for Player {
                 }
                 false
             }
+            Msg::QueryWinner => {
+                wasm_bindgen_futures::spawn_local(query_winner());
+                false
+            }
         }
     }
 }
@@ -179,6 +185,17 @@ async fn play(token: &str, action: &Action) {
 enum Action {
     Play(Card),
     Pass,
+}
+
+async fn query_winner() {
+    match Request::get("/api/winner").send().await {
+        Ok(response) => {
+            let winner: serde_json::Value = response.json().await.unwrap();
+            let winner_id = winner.get("id").unwrap().as_u64().unwrap() + 1;
+            gloo_dialogs::alert(&format!("Player number {winner_id} won the game"));
+        }
+        Err(_) => gloo_dialogs::alert("Server error"),
+    }
 }
 
 fn card_comparator(c1: &Card, c2: &Card) -> std::cmp::Ordering {
