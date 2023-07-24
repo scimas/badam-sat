@@ -1,0 +1,66 @@
+.hand {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas: "spades hearts clubs diamonds";
+    line-height: 1;
+}
+
+.spades {
+    grid-area: spades;
+}
+
+.hearts {
+    grid-area: hearts;
+    color: red;
+}
+
+.clubs {
+    grid-area: clubs;
+}
+
+.diamonds {
+    grid-area: diamonds;
+    color: red;
+}
+
+.hand_stack {
+    font-size: 72px;
+    justify-self: center;
+}
+
+.play_area {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas: "spades hearts clubs diamonds";
+    justify-items: center;
+}
+
+.stack {
+    display: inline-block;
+    font-size: 72px;
+}
+
+.playable {
+    text-decoration: none;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+    margin: 0;
+    border: none;
+    font-size: 64px;
+    color: inherit;
+}
+
+p {
+    margin: 5px;
+}
+
+@media screen and (min-width: 600px) {
+    .playable {
+        font-size: 30px;
+    }
+
+    .stack {
+        font-size: 30px;
+    }
+}
