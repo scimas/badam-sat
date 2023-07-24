@@ -1,7 +1,7 @@
 use std::{fs::File, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -135,6 +135,7 @@ async fn create_room(
     State(server): State<Arc<RwLock<Server>>>,
     Json(room_request): Json<NewRoomRequest>,
 ) -> Result<Json<RoomPayload>, Error> {
+    log::info!("received create room request");
     server
         .write()
         .await
@@ -170,7 +171,7 @@ async fn play(
 
 async fn playing_area(
     State(server): State<Arc<RwLock<Server>>>,
-    Json(payload): Json<RoomPayload>,
+    Query(payload): Query<RoomPayload>,
 ) -> Result<Json<PlayingArea>, Error> {
     log::info!("received playing_area request");
     let mut receiver = server
@@ -204,7 +205,7 @@ async fn hand_of_player(
 
 async fn winner(
     State(server): State<Arc<RwLock<Server>>>,
-    Json(payload): Json<RoomPayload>,
+    Query(payload): Query<RoomPayload>,
 ) -> Result<Json<Winner>, Error> {
     log::info!("received winner request");
     let mut receiver = server

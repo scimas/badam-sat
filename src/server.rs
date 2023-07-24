@@ -56,8 +56,10 @@ impl Server {
                 .unwrap()
                 .get_claim("sub")
                 .unwrap()
-                .as_u64()
-                .unwrap() as usize,
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap(),
             room_id: serde_json::from_value::<Uuid>(
                 trusted_token
                     .payload_claims()
