@@ -4,10 +4,22 @@ use badam_sat::games::CardStack;
 use card_deck::standard_deck::{Card, Rank, Suit};
 use futures_util::FutureExt;
 use gloo_net::http::Request;
-use yew::{html, Component, Html};
+use uuid::Uuid;
+use yew::{html, Component, Html, Properties};
 
+#[derive(Debug, PartialEq)]
 pub struct PlayingArea {
     card_stacks: HashMap<Suit, Vec<CardStack>>,
+}
+
+impl Default for PlayingArea {
+    fn default() -> Self {
+        let card_stacks = Suit::all_suits()
+            .into_iter()
+            .map(|suit| (suit, Vec::new()))
+            .collect();
+        PlayingArea { card_stacks }
+    }
 }
 
 pub enum Msg {
@@ -15,17 +27,18 @@ pub enum Msg {
     PlayArea(HashMap<Suit, Vec<CardStack>>),
 }
 
+#[derive(Debug, PartialEq, Properties)]
+pub struct Props {
+    pub room_id: Uuid,
+}
+
 impl Component for PlayingArea {
     type Message = Msg;
-    type Properties = ();
+    type Properties = Props;
 
     fn create(ctx: &yew::Context<Self>) -> Self {
         ctx.link().send_message(Msg::QueryPlayArea);
-        let card_stacks = Suit::all_suits()
-            .into_iter()
-            .map(|suit| (suit, Vec::new()))
-            .collect();
-        PlayingArea { card_stacks }
+        PlayingArea::default()
     }
 
     fn view(&self, _ctx: &yew::Context<Self>) -> yew::Html {
@@ -55,7 +68,8 @@ impl Component for PlayingArea {
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::QueryPlayArea => {
-                ctx.link().send_future(query_play_area().map(Msg::PlayArea));
+                ctx.link()
+                    .send_future(query_play_area(ctx.props().room_id.clone()).map(Msg::PlayArea));
                 false
             }
             Msg::PlayArea(stacks) => {
@@ -70,8 +84,12 @@ impl Component for PlayingArea {
     }
 }
 
-async fn query_play_area() -> HashMap<Suit, Vec<CardStack>> {
-    let response = Request::get("/api/playing_area").send().await.unwrap();
+async fn query_play_area(room_id: Uuid) -> HashMap<Suit, Vec<CardStack>> {
+    let response = Request::get("/api/playing_area")
+        .query([("room_id", room_id.to_string())])
+        .send()
+        .await
+        .unwrap();
     let stacks: badam_sat::games::PlayingArea = response.json().await.unwrap();
     stacks.stacks().clone()
 }

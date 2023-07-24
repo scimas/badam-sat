@@ -3,16 +3,26 @@ use std::{collections::HashMap, time::Duration};
 use card_deck::standard_deck::{Card, Rank, Suit};
 use futures_util::FutureExt;
 use gloo_net::http::Request;
-use serde::{Deserialize, Serialize};
-use yew::{html, platform::time::sleep, Component, Html};
+use serde::Serialize;
+use uuid::Uuid;
+use yew::{html, platform::time::sleep, Component, Html, Properties};
 
+#[derive(Debug, PartialEq)]
 pub struct Player {
-    token: String,
     hand: HashMap<Suit, Vec<Card>>,
 }
 
+impl Default for Player {
+    fn default() -> Self {
+        let hand = Suit::all_suits()
+            .into_iter()
+            .map(|suit| (suit, Vec::new()))
+            .collect();
+        Player { hand }
+    }
+}
+
 pub enum Msg {
-    Joined(String),
     QueryHand,
     Hand(HashMap<Suit, Vec<Card>>),
     Play(Card),
@@ -20,33 +30,20 @@ pub enum Msg {
     QueryWinner,
 }
 
-impl Player {
-    async fn join() -> String {
-        match Request::post("/api/join").send().await {
-            Err(_) => String::new(),
-            Ok(response) => match response.json::<JoinResponse>().await {
-                Ok(JoinResponse::Payload { token, .. }) => token,
-                Ok(_) | Err(_) => String::new(),
-            },
-        }
-    }
+#[derive(Debug, PartialEq, Properties)]
+pub struct Props {
+    pub room_id: Uuid,
+    pub token: String,
 }
 
 impl Component for Player {
     type Message = Msg;
-    type Properties = ();
+    type Properties = Props;
 
     fn create(ctx: &yew::Context<Self>) -> Self {
-        ctx.link().send_future(Player::join().map(Msg::Joined));
+        ctx.link().send_message(Msg::QueryHand);
         ctx.link().send_message(Msg::QueryWinner);
-        let hand = Suit::all_suits()
-            .into_iter()
-            .map(|suit| (suit, Vec::new()))
-            .collect();
-        Player {
-            token: String::new(),
-            hand,
-        }
+        Player::default()
     }
 
     fn view(&self, ctx: &yew::Context<Self>) -> yew::Html {
@@ -72,14 +69,9 @@ impl Component for Player {
 
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Joined(token) => {
-                self.token = token;
-                ctx.link().send_message(Msg::QueryHand);
-                true
-            }
             Msg::QueryHand => {
                 {
-                    let token = self.token.clone();
+                    let token = ctx.props().token.clone();
                     ctx.link()
                         .send_future(async move { query_hand(&token).map(Msg::Hand).await });
                 }
@@ -87,7 +79,7 @@ impl Component for Player {
             }
             Msg::Hand(hand) => {
                 if self.hand == hand {
-                    let token = self.token.clone();
+                    let token = ctx.props().token.clone();
                     ctx.link().send_future(async move {
                         sleep(Duration::from_secs(5)).await;
                         query_hand(&token).map(Msg::Hand).await
@@ -100,7 +92,7 @@ impl Component for Player {
             }
             Msg::Play(card) => {
                 {
-                    let token = self.token.clone();
+                    let token = ctx.props().token.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         play(&token, &Action::Play(card)).await
                     });
@@ -110,7 +102,7 @@ impl Component for Player {
             }
             Msg::Pass => {
                 {
-                    let token = self.token.clone();
+                    let token = ctx.props().token.clone();
                     wasm_bindgen_futures::spawn_local(
                         async move { play(&token, &Action::Pass).await },
                     );
@@ -118,25 +110,14 @@ impl Component for Player {
                 false
             }
             Msg::QueryWinner => {
-                wasm_bindgen_futures::spawn_local(query_winner());
+                {
+                    let room_id = ctx.props().room_id.clone();
+                    wasm_bindgen_futures::spawn_local(query_winner(room_id));
+                }
                 false
             }
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum JoinResponse {
-    Payload {
-        token: String,
-        #[serde(rename = "token_type")]
-        _token_type: String,
-    },
-    Error {
-        #[serde(rename = "error")]
-        _error: String,
-    },
 }
 
 async fn query_hand(token: &str) -> HashMap<Suit, Vec<Card>> {
@@ -187,8 +168,12 @@ enum Action {
     Pass,
 }
 
-async fn query_winner() {
-    match Request::get("/api/winner").send().await {
+async fn query_winner(room_id: Uuid) {
+    match Request::get("/api/winner")
+        .query([("room_id", room_id.to_string())])
+        .send()
+        .await
+    {
         Ok(response) => {
             let winner: serde_json::Value = response.json().await.unwrap();
             let winner_id = winner.get("id").unwrap().as_u64().unwrap() + 1;
