@@ -3,28 +3,16 @@ use serde::Serialize;
 use serde_json::json;
 
 #[derive(Debug, Serialize)]
-pub struct InvalidToken;
+pub enum Error {
+    ClientError(ClientError),
+    // ServerError(ServerError),
+}
 
-impl IntoResponse for InvalidToken {
+impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
-        StatusCode::UNAUTHORIZED.into_response()
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct JoinFail {
-    error: String,
-}
-
-impl IntoResponse for JoinFail {
-    fn into_response(self) -> axum::response::Response {
-        (StatusCode::CONFLICT, Json(self)).into_response()
-    }
-}
-
-impl JoinFail {
-    pub fn new(error: String) -> Self {
-        JoinFail { error }
+        match self {
+            Error::ClientError(client_error) => client_error.into_response(),
+        }
     }
 }
 
@@ -32,6 +20,11 @@ impl JoinFail {
 pub enum ClientError {
     InvalidMove,
     TooEarly,
+    InvalidToken,
+    InvalidRoomId,
+    RoomFull,
+    InvalidPlayerId,
+    ServerFull,
 }
 
 impl IntoResponse for ClientError {
@@ -45,6 +38,27 @@ impl IntoResponse for ClientError {
             ClientError::TooEarly => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": "game is not ready to accept moves yet"})),
+            )
+                .into_response(),
+            ClientError::InvalidToken => StatusCode::UNAUTHORIZED.into_response(),
+            ClientError::InvalidRoomId => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "no such room exists"})),
+            )
+                .into_response(),
+            ClientError::RoomFull => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "cannot join a full room"})),
+            )
+                .into_response(),
+            ClientError::InvalidPlayerId => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "no such player exists"})),
+            )
+                .into_response(),
+            ClientError::ServerFull => (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "no space left in server for another game"})),
             )
                 .into_response(),
         }

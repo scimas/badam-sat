@@ -1,51 +1,45 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use badam_sat::games::{BadamSat, PlayingArea, Transition};
-use card_deck::standard_deck::Card;
-use pasetors::{
-    claims::{Claims, ClaimsValidationRules},
-    keys::AsymmetricKeyPair,
-    version4::V4,
+use axum::{
+    async_trait,
+    extract::FromRequestParts,
+    headers::{authorization::Bearer, Authorization},
+    http::request::Parts,
+    RequestPartsExt, TypedHeader,
 };
-use serde::Deserialize;
-use serde_json::json;
-use tokio::sync::watch;
+use pasetors::{claims::ClaimsValidationRules, keys::AsymmetricKeyPair, version4::V4};
+use serde::Serialize;
+use tokio::sync::RwLock;
+use uuid::Uuid;
 
-use crate::errors::{ClientError, InvalidToken, JoinFail};
+use crate::{
+    errors::{ClientError, Error},
+    rooms::{Action, Room},
+};
 
+#[derive(Debug)]
 pub struct Server {
     // ED25519 key for signing PASETO tokens
     key_pair: AsymmetricKeyPair<V4>,
-    // mapping from PASETO token to player index
-    players: HashMap<String, usize>,
-    // PASETO tokens for player indices
-    tokens: Vec<String>,
-    game: BadamSat,
-    max_player_count: usize,
-    play_area_sender: watch::Sender<PlayingArea>,
-    winner_sender: watch::Sender<serde_json::Value>,
+    rooms: HashMap<Uuid, Room>,
+    finished_rooms: Vec<Uuid>,
+    max_rooms: usize,
 }
 
 impl Server {
-    pub fn new(players: usize, decks: usize, key_pair: AsymmetricKeyPair<V4>) -> Self {
-        let game = BadamSat::with_player_and_deck_capacity(players, decks);
-        let (play_area_sender, _) = watch::channel(game.playing_area().clone());
-        let (winner_sender, _) = watch::channel(json!({}));
+    pub fn new(key_pair: AsymmetricKeyPair<V4>, max_rooms: usize) -> Self {
         Server {
             key_pair,
-            players: HashMap::with_capacity(players),
-            tokens: Vec::with_capacity(players),
-            game,
-            max_player_count: players,
-            play_area_sender,
-            winner_sender,
+            rooms: HashMap::new(),
+            finished_rooms: Vec::new(),
+            max_rooms,
         }
     }
 
-    pub fn verify(&self, token: &str) -> Result<usize, InvalidToken> {
+    pub fn verify(&self, token: &str) -> Result<Player, Error> {
         let untrusted_token =
             pasetors::token::UntrustedToken::<pasetors::Public, V4>::try_from(token)
-                .map_err(|_| InvalidToken)?;
+                .map_err(|_| Error::ClientError(ClientError::InvalidToken))?;
         let validation_rules = ClaimsValidationRules::new();
         let trusted_token = pasetors::public::verify(
             &self.key_pair.public,
@@ -54,78 +48,103 @@ impl Server {
             None,
             None,
         )
-        .map_err(|_| InvalidToken)?;
-        Ok(trusted_token
-            .payload_claims()
-            .unwrap()
-            .get_claim("sub")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap())
-    }
-
-    pub fn join(&mut self) -> Result<String, JoinFail> {
-        if self.is_full() {
-            return Err(JoinFail::new("server is full".into()));
-        }
-        let mut claim = Claims::new().unwrap();
-        claim.subject(&self.players.len().to_string()).unwrap();
-        let token = pasetors::public::sign(&self.key_pair.secret, &claim, None, None).unwrap();
-        let current_player = self.players.len();
-        self.players.insert(token.clone(), current_player);
-        self.tokens.push(token.clone());
-        if self.players.len() == self.max_player_count {
-            self.game.update(Transition::DealCards).unwrap();
-        }
-        Ok(token)
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.max_player_count == self.players.len()
-    }
-
-    pub fn play(&mut self, action: Action, player: usize) -> Result<(), ClientError> {
-        if !self.is_full() {
-            return Err(ClientError::TooEarly);
-        }
-        let transition = match action {
-            Action::Play(card) => Transition::Play { player, card },
-            Action::Pass => Transition::Pass { player },
+        .map_err(|_| Error::ClientError(ClientError::InvalidToken))?;
+        let player = Player {
+            token: token.to_owned(),
+            player_id: trusted_token
+                .payload_claims()
+                .unwrap()
+                .get_claim("sub")
+                .unwrap()
+                .as_u64()
+                .unwrap() as usize,
+            room_id: serde_json::from_value::<Uuid>(
+                trusted_token
+                    .payload_claims()
+                    .unwrap()
+                    .get_claim("room_id")
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap(),
         };
-        match self.game.update(transition) {
+        Ok(player)
+    }
+
+    pub fn create_room(&mut self, players: usize, decks: usize) -> Result<Uuid, Error> {
+        if self.max_rooms == self.rooms.len() {
+            return Err(Error::ClientError(ClientError::ServerFull));
+        }
+        let room = Room::new(players, decks);
+        let room_id = Uuid::new_v4();
+        self.rooms.insert(room_id, room);
+        Ok(room_id)
+    }
+
+    pub fn join(&mut self, room_id: &Uuid) -> Result<String, Error> {
+        match self.rooms.get_mut(room_id) {
+            Some(room) => {
+                let mut claim = room.join()?;
+                claim
+                    .add_additional("room_id", serde_json::to_value(room_id).unwrap())
+                    .unwrap();
+                let token =
+                    pasetors::public::sign(&self.key_pair.secret, &claim, None, None).unwrap();
+                Ok(token)
+            }
+            None => Err(Error::ClientError(ClientError::InvalidRoomId)),
+        }
+    }
+
+    pub fn play(&mut self, action: Action, player: usize, room_id: &Uuid) -> Result<(), Error> {
+        match self
+            .rooms
+            .get_mut(room_id)
+            .map(|room| room.play(action, player))
+            .unwrap_or_else(|| Err(Error::ClientError(ClientError::InvalidRoomId)))
+        {
             Ok(_) => {
-                self.play_area_sender
-                    .send_replace(self.playing_area().clone());
-                if let Some(id) = self.game.winner() {
-                    self.winner_sender.send_replace(json!({ "id": id }));
+                if self.rooms[room_id].is_game_over() {
+                    self.finished_rooms.push(*room_id);
                 }
                 Ok(())
             }
-            Err(_) => Err(ClientError::InvalidMove),
+            Err(err) => Err(err),
         }
     }
 
-    pub fn playing_area(&self) -> &PlayingArea {
-        self.game.playing_area()
+    pub fn room(&self, room_id: &Uuid) -> Result<&Room, Error> {
+        self.rooms
+            .get(room_id)
+            .ok_or(Error::ClientError(ClientError::InvalidRoomId))
     }
 
-    pub fn hand_of_player(&self, player: usize) -> Vec<Card> {
-        self.game.hand_of_player(player).to_vec()
-    }
-
-    pub fn play_area_sender(&self) -> &watch::Sender<PlayingArea> {
-        &self.play_area_sender
-    }
-
-    pub fn winner_sender(&self) -> &watch::Sender<serde_json::Value> {
-        &self.winner_sender
+    pub fn remove_finished_rooms(&mut self) {
+        for room_id in self.finished_rooms.drain(..) {
+            self.rooms.remove(&room_id);
+        }
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub enum Action {
-    Play(Card),
-    Pass,
+#[derive(Debug, Serialize)]
+pub struct Player {
+    token: String,
+    pub player_id: usize,
+    pub room_id: Uuid,
+}
+
+#[async_trait]
+impl FromRequestParts<Arc<RwLock<Server>>> for Player {
+    type Rejection = Error;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<RwLock<Server>>,
+    ) -> Result<Self, Self::Rejection> {
+        let TypedHeader(Authorization(token)) = parts
+            .extract::<TypedHeader<Authorization<Bearer>>>()
+            .await
+            .map_err(|_| Error::ClientError(ClientError::InvalidToken))?;
+        state.read().await.verify(token.token())
+    }
 }
