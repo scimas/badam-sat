@@ -5,13 +5,14 @@ use serde_json::json;
 #[derive(Debug, Serialize)]
 pub enum Error {
     ClientError(ClientError),
-    // ServerError(ServerError),
+    ServerError(ServerError),
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         match self {
             Error::ClientError(client_error) => client_error.into_response(),
+            Error::ServerError(server_error) => server_error.into_response(),
         }
     }
 }
@@ -59,6 +60,23 @@ impl IntoResponse for ClientError {
             ClientError::ServerFull => (
                 StatusCode::CONFLICT,
                 Json(json!({"error": "no space left in server for another game"})),
+            )
+                .into_response(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum ServerError {
+    NoMove,
+}
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            ServerError::NoMove => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "no last move found"})),
             )
                 .into_response(),
         }

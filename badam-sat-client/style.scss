@@ -55,6 +55,10 @@ p {
     margin: 5px;
 }
 
+.glow {
+    background-image: radial-gradient(white 50%, gold);
+}
+
 @media screen and (min-width: 600px) {
     .playable {
         font-size: 30px;

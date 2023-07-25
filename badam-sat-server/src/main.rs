@@ -23,6 +23,8 @@ use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
+use crate::errors::ServerError;
+
 mod errors;
 mod rooms;
 mod server;
@@ -86,6 +88,7 @@ async fn main() {
         .route("/api/playing_area", get(playing_area))
         .route("/api/my_hand", get(hand_of_player))
         .route("/api/winner", get(winner))
+        .route("/api/last_move", get(last_move))
         .fallback_service(serve_dir)
         .with_state(server.clone());
 
@@ -219,6 +222,18 @@ async fn winner(
         receiver.borrow().clone()
     };
     Ok(Json(play_area))
+}
+
+async fn last_move(
+    State(server): State<Arc<RwLock<Server>>>,
+    Query(payload): Query<RoomPayload>,
+) -> Result<Json<Action>, Error> {
+    log::info!("received last move request");
+    if let Some(action) = server.read().await.room(&payload.room_id)?.last_move() {
+        Ok(Json(*action))
+    } else {
+        Err(Error::ServerError(ServerError::NoMove))
+    }
 }
 
 #[derive(Debug, Serialize)]

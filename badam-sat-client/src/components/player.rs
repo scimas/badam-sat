@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use card_deck::standard_deck::{Card, Rank, Suit};
 use futures_util::FutureExt;
 use gloo_net::http::Request;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use yew::{html, platform::time::sleep, Component, Html, Properties};
 
@@ -162,8 +162,8 @@ async fn play(token: &str, action: &Action) {
     }
 }
 
-#[derive(Debug, Serialize)]
-enum Action {
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Action {
     Play(Card),
     Pass,
 }

@@ -13,6 +13,7 @@ pub struct Room {
     max_player_count: usize,
     play_area_sender: watch::Sender<PlayingArea>,
     winner_sender: watch::Sender<Winner>,
+    last_move: Option<Action>,
 }
 
 impl Room {
@@ -26,6 +27,7 @@ impl Room {
             max_player_count: players,
             play_area_sender,
             winner_sender,
+            last_move: None,
         }
     }
 
@@ -61,6 +63,9 @@ impl Room {
                 if let Some(id) = self.game.winner() {
                     self.winner_sender.send_replace(Winner { id });
                 }
+                if matches!(action, Action::Play(..)) {
+                    self.last_move = Some(action);
+                }
                 Ok(())
             }
             Err(_) => Err(Error::ClientError(ClientError::InvalidMove)),
@@ -88,9 +93,13 @@ impl Room {
     pub fn is_game_over(&self) -> bool {
         self.game.winner().is_some()
     }
+
+    pub fn last_move(&self) -> Option<&Action> {
+        self.last_move.as_ref()
+    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum Action {
     Play(Card),
     Pass,
