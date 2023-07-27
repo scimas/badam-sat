@@ -153,23 +153,23 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
         CardStack::SevenOnly => {
             let card = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == &card) {
-                "glow"
+                "seven glow"
             } else {
-                ""
+                "seven"
             };
             html! {<div class="stack"><p class={class}>{card.to_string()}</p></div>}
         }
         CardStack::LowOnly(card) => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == card) {
-                "glow"
+                "low glow"
             } else {
-                ""
+                "low"
             };
             let seven_class = if glow.is_some_and(|glower| glower == &seven) {
-                "glow"
+                "seven glow"
             } else {
-                ""
+                "seven"
             };
             html! {
                 <div class="stack">
@@ -181,14 +181,14 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
         CardStack::HighOnly(card) => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == card) {
-                "glow"
+                "high glow"
             } else {
-                ""
+                "high"
             };
             let seven_class = if glow.is_some_and(|glower| glower == &seven) {
-                "glow"
+                "seven glow"
             } else {
-                ""
+                "seven"
             };
             html! {
                 <div class="stack">
@@ -200,19 +200,19 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
         CardStack::LowAndHigh { low, high } => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let low_class = if glow.is_some_and(|glower| glower == low) {
-                "glow"
+                "low glow"
             } else {
-                ""
+                "low"
             };
             let seven_class = if glow.is_some_and(|glower| glower == &seven) {
-                "glow"
+                "seven glow"
             } else {
-                ""
+                "seven"
             };
             let high_class = if glow.is_some_and(|glower| glower == high) {
-                "glow"
+                "high glow"
             } else {
-                ""
+                "high"
             };
             html! {
                 <div class="stack">
