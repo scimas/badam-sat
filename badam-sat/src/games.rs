@@ -124,6 +124,7 @@ impl PlayingArea {
             .all(|stacks| stacks.iter().all(|stack| matches!(stack, CardStack::Empty)))
     }
 
+    /// Get a reference to the internal data structure.
     pub fn stacks(&self) -> &HashMap<Suit, Vec<CardStack>> {
         &self.card_stacks
     }
@@ -347,10 +348,12 @@ impl BadamSat {
         Some(actions)
     }
 
+    /// Get the [`PlayingArea`] of this game.
     pub fn playing_area(&self) -> &PlayingArea {
         &self.playing_area
     }
 
+    /// Get the hand of the `player`.
     pub fn hand_of_player(&self, player: usize) -> Option<&[Card]> {
         self.players.get(player).map(|player| player.hand())
     }

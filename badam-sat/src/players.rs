@@ -64,27 +64,36 @@ impl Player {
         }
     }
 
+    /// Remove `card` from the player's hand.
+    ///
+    /// # Panics
+    /// Panics if the player does not have this card.
     pub fn remove_card(&mut self, card: &Card) {
         let idx = self.hand.iter().position(|hcard| hcard == card).unwrap();
         self.hand.remove(idx);
     }
 
+    /// Get the maximum number of cards this player can hold.
     pub fn capacity(&self) -> usize {
         self.max_card_count
     }
 
+    /// Check whether this player has the `card`.
     pub fn has_card(&self, card: &Card) -> bool {
         self.hand.contains(card)
     }
 
+    /// Get the unique set of cards from the player's hand.
     pub fn unique_cards_in_hand(&self) -> HashSet<Card> {
         self.hand.iter().cloned().collect()
     }
 
+    /// Get the current number of cards in the hand.
     pub fn hand_len(&self) -> usize {
         self.hand.len()
     }
 
+    /// Get a reference to the player's cards.
     pub fn hand(&self) -> &[Card] {
         &self.hand
     }
@@ -93,5 +102,21 @@ impl Player {
 impl Default for Player {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter::once;
+
+    use super::Player;
+    use card_deck::standard_deck::{Card, Rank, Suit};
+
+    #[test]
+    #[should_panic]
+    fn test_remove_non_existent_card() {
+        let mut player = Player::new();
+        player.assign_cards(once(Card::new_normal(Suit::Spades, Rank::Jack)));
+        player.remove_card(&Card::new_normal(Suit::Clubs, Rank::Queen))
     }
 }

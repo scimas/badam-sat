@@ -27,6 +27,8 @@ pub struct Server {
 }
 
 impl Server {
+    /// Create a server that can support `max_rooms` concurrent games and uses
+    /// the ED25519 `key_pair` keys for player token signing.
     pub fn new(key_pair: AsymmetricKeyPair<V4>, max_rooms: usize) -> Self {
         Server {
             key_pair,
@@ -36,7 +38,9 @@ impl Server {
         }
     }
 
-    pub fn verify(&self, token: &str) -> Result<Player, Error> {
+    /// Verify that the `token` is a valid PASETO token signed by us and create
+    /// an `AuthenticatedPlayer` based on it.
+    pub fn verify(&self, token: &str) -> Result<AuthenticatedPlayer, Error> {
         let untrusted_token =
             pasetors::token::UntrustedToken::<pasetors::Public, V4>::try_from(token)
                 .map_err(|_| Error::ClientError(ClientError::InvalidToken))?;
@@ -49,7 +53,7 @@ impl Server {
             None,
         )
         .map_err(|_| Error::ClientError(ClientError::InvalidToken))?;
-        let player = Player {
+        let player = AuthenticatedPlayer {
             token: token.to_owned(),
             player_id: trusted_token
                 .payload_claims()
@@ -73,6 +77,10 @@ impl Server {
         Ok(player)
     }
 
+    /// Create a room in the server.
+    ///
+    /// Currently [`ClientError::ServerFull`] is the only error this method can
+    /// return.
     pub fn create_room(&mut self, players: usize, decks: usize) -> Result<Uuid, Error> {
         if self.max_rooms == self.rooms.len() {
             return Err(Error::ClientError(ClientError::ServerFull));
@@ -83,6 +91,10 @@ impl Server {
         Ok(room_id)
     }
 
+    /// Join the room `room_id` in this server as a player.
+    ///
+    /// Currently [`ClientError::RoomFull`] and [`ClientError::InvalidRoomId`]
+    /// are the only errors this method can return.
     pub fn join(&mut self, room_id: &Uuid) -> Result<String, Error> {
         match self.rooms.get_mut(room_id) {
             Some(room) => {
@@ -98,6 +110,7 @@ impl Server {
         }
     }
 
+    /// Make the `action` playe for the `player` in the room `room_id`.
     pub fn play(&mut self, action: Action, player: usize, room_id: &Uuid) -> Result<(), Error> {
         match self
             .rooms
@@ -115,12 +128,14 @@ impl Server {
         }
     }
 
+    /// Get the room `room_id`.
     pub fn room(&self, room_id: &Uuid) -> Result<&Room, Error> {
         self.rooms
             .get(room_id)
             .ok_or(Error::ClientError(ClientError::InvalidRoomId))
     }
 
+    /// Clean up the rooms with finished games.
     pub fn remove_finished_rooms(&mut self) {
         for room_id in self.finished_rooms.drain(..) {
             self.rooms.remove(&room_id);
@@ -128,15 +143,16 @@ impl Server {
     }
 }
 
+/// Represents a player that has been verified based on their PASETO token.
 #[derive(Debug, Serialize)]
-pub struct Player {
+pub struct AuthenticatedPlayer {
     token: String,
     pub player_id: usize,
     pub room_id: Uuid,
 }
 
 #[async_trait]
-impl FromRequestParts<Arc<RwLock<Server>>> for Player {
+impl FromRequestParts<Arc<RwLock<Server>>> for AuthenticatedPlayer {
     type Rejection = Error;
 
     async fn from_request_parts(

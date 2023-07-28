@@ -17,7 +17,7 @@ use pasetors::{
 };
 use rooms::{Action, Winner};
 use serde::{Deserialize, Serialize};
-use server::{Player, Server};
+use server::{AuthenticatedPlayer, Server};
 use simple_logger::SimpleLogger;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
@@ -160,7 +160,7 @@ async fn join(
 }
 
 async fn play(
-    player: Player,
+    player: AuthenticatedPlayer,
     State(server): State<Arc<RwLock<Server>>>,
     Json(action): Json<Action>,
 ) -> Result<StatusCode, Error> {
@@ -194,7 +194,7 @@ async fn playing_area(
 }
 
 async fn hand_of_player(
-    player: Player,
+    player: AuthenticatedPlayer,
     State(server): State<Arc<RwLock<Server>>>,
 ) -> Result<Json<Vec<Card>>, Error> {
     log::info!("received hand request from player {}", player.player_id);
