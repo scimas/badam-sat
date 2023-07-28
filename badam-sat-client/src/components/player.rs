@@ -111,7 +111,7 @@ impl Component for Player {
             }
             Msg::QueryWinner => {
                 {
-                    let room_id = ctx.props().room_id.clone();
+                    let room_id = ctx.props().room_id;
                     wasm_bindgen_futures::spawn_local(query_winner(room_id));
                 }
                 false

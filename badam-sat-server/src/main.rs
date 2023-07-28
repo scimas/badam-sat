@@ -221,7 +221,7 @@ async fn winner(
         .subscribe();
     let play_area = {
         receiver.changed().await.unwrap();
-        receiver.borrow().clone()
+        *receiver.borrow()
     };
     Ok(Json(play_area))
 }

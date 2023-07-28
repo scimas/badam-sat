@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use badam_sat::games::CardStack;
+use badam_sat::games::{CardStack, StackState};
 use card_deck::standard_deck::{Card, Rank, Suit};
 use futures_util::FutureExt;
 use gloo_net::http::Request;
@@ -12,16 +10,13 @@ use super::player::Action;
 
 #[derive(Debug, PartialEq)]
 pub struct PlayingArea {
-    card_stacks: HashMap<Suit, Vec<CardStack>>,
+    card_stacks: Vec<CardStack>,
     glow: Option<Card>,
 }
 
 impl Default for PlayingArea {
     fn default() -> Self {
-        let card_stacks = Suit::all_suits()
-            .into_iter()
-            .map(|suit| (suit, Vec::new()))
-            .collect();
+        let card_stacks = Suit::all_suits().into_iter().map(CardStack::new).collect();
         PlayingArea {
             card_stacks,
             glow: None,
@@ -31,7 +26,7 @@ impl Default for PlayingArea {
 
 pub enum Msg {
     QueryPlayArea,
-    PlayArea(HashMap<Suit, Vec<CardStack>>),
+    PlayArea(Vec<CardStack>),
     QueryLastMove,
     LastMove(Option<Action>),
 }
@@ -56,14 +51,11 @@ impl Component for PlayingArea {
             {
                 self.card_stacks
                     .iter()
-                    .map(|(suit, stacks)| {
+                    .map(|stack| {
                         html! {
-                            <div class={suit.name().to_string()}>
+                            <div class={stack.suit().name().to_string()}>
                                 {
-                                    stacks
-                                        .iter()
-                                        .map(|stack| stack_to_html(suit, stack, self.glow.as_ref()))
-                                        .collect::<Html>()
+                                    stack_to_html(stack.suit(), stack, self.glow.as_ref())
                                 }
                             </div>
                         }
@@ -78,7 +70,7 @@ impl Component for PlayingArea {
         match msg {
             Msg::QueryPlayArea => {
                 ctx.link()
-                    .send_future(query_play_area(ctx.props().room_id.clone()).map(Msg::PlayArea));
+                    .send_future(query_play_area(ctx.props().room_id).map(Msg::PlayArea));
                 false
             }
             Msg::PlayArea(stacks) => {
@@ -92,7 +84,7 @@ impl Component for PlayingArea {
             }
             Msg::QueryLastMove => {
                 ctx.link()
-                    .send_future(query_last_move(ctx.props().room_id.clone()).map(Msg::LastMove));
+                    .send_future(query_last_move(ctx.props().room_id).map(Msg::LastMove));
                 false
             }
             Msg::LastMove(maybe_action) => {
@@ -112,14 +104,14 @@ impl Component for PlayingArea {
     }
 }
 
-async fn query_play_area(room_id: Uuid) -> HashMap<Suit, Vec<CardStack>> {
+async fn query_play_area(room_id: Uuid) -> Vec<CardStack> {
     let response = Request::get("/badam_sat/api/playing_area")
         .query([("room_id", room_id.to_string())])
         .send()
         .await
         .unwrap();
     let stacks: badam_sat::games::PlayingArea = response.json().await.unwrap();
-    stacks.stacks().clone()
+    stacks.stacks().to_vec()
 }
 
 async fn query_last_move(room_id: Uuid) -> Option<Action> {
@@ -146,11 +138,11 @@ enum LastMoveResponse {
 }
 
 fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
-    match stack {
-        CardStack::Empty => {
+    match stack.stack_state() {
+        StackState::Empty => {
             html! {<div class="stack">{"\u{1f0a0}"}</div>}
         }
-        CardStack::SevenOnly => {
+        StackState::SevenOnly => {
             let card = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == &card) {
                 "seven glow"
@@ -159,7 +151,7 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
             };
             html! {<div class="stack"><p class={class}>{card.to_string()}</p></div>}
         }
-        CardStack::LowOnly(card) => {
+        StackState::LowOnly(card) => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == card) {
                 "low glow"
@@ -178,7 +170,7 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
                 </div>
             }
         }
-        CardStack::HighOnly(card) => {
+        StackState::HighOnly(card) => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let class = if glow.is_some_and(|glower| glower == card) {
                 "high glow"
@@ -197,7 +189,7 @@ fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
                 </div>
             }
         }
-        CardStack::LowAndHigh { low, high } => {
+        StackState::LowAndHigh { low, high } => {
             let seven = Card::new_normal(*suit, Rank::new(7));
             let low_class = if glow.is_some_and(|glower| glower == low) {
                 "low glow"

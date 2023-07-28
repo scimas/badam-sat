@@ -1,6 +1,6 @@
 use card_deck::standard_deck::{Card, Rank, StandardDeckBuilder, Suit};
 use rand::thread_rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::players::Player;
 
@@ -40,109 +40,188 @@ pub enum Transition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PlayingArea {
-    card_stacks: HashMap<Suit, Vec<CardStack>>,
+    card_stacks: Vec<CardStack>,
 }
 
 impl PlayingArea {
     /// Create a `PlayingArea` capable of holding cards from `decks` number of
     /// standard 52-card decks.
     fn with_deck_capacity(decks: usize) -> Self {
-        let card_stacks = [Suit::Clubs, Suit::Diamonds, Suit::Hearts, Suit::Spades]
+        let card_stacks = Suit::all_suits()
             .into_iter()
-            .map(|suit| (suit, vec![CardStack::Empty; decks]))
+            .flat_map(|suit| vec![CardStack::new(suit); decks])
             .collect();
         PlayingArea { card_stacks }
     }
 
     /// Try to play a [`Card`].
     fn try_play(&mut self, card: Card) -> Result<(), InvalidPlay> {
-        let stacks = self.card_stacks.get_mut(card.suit().unwrap()).unwrap();
-        for stack in stacks.iter_mut() {
-            match stack {
-                CardStack::Empty => {
-                    if card.rank().unwrap().value() == 7 {
-                        *stack = CardStack::SevenOnly;
-                        return Ok(());
-                    }
-                }
-                CardStack::SevenOnly => {
-                    if card.rank().unwrap().value() == 6 {
-                        *stack = CardStack::LowOnly(card);
-                        return Ok(());
-                    } else if card.rank().unwrap().value() == 8 {
-                        *stack = CardStack::HighOnly(card);
-                        return Ok(());
-                    }
-                }
-                CardStack::LowOnly(stack_card) => {
-                    if card.rank().unwrap().value() == stack_card.rank().unwrap().value() - 1 {
-                        *stack = CardStack::LowOnly(card);
-                        return Ok(());
-                    } else if card.rank().unwrap().value() == 8 {
-                        *stack = CardStack::LowAndHigh {
-                            low: *stack_card,
-                            high: card,
-                        };
-                        return Ok(());
-                    }
-                }
-                CardStack::HighOnly(stack_card) => {
-                    if card.rank().unwrap().value() == stack_card.rank().unwrap().value() + 1 {
-                        *stack = CardStack::HighOnly(card);
-                        return Ok(());
-                    } else if card.rank().unwrap().value() == 6 {
-                        *stack = CardStack::LowAndHigh {
-                            low: card,
-                            high: *stack_card,
-                        };
-                        return Ok(());
-                    }
-                }
-                CardStack::LowAndHigh { low, high } => {
-                    if card.rank().unwrap().value() == low.rank().unwrap().value() - 1 {
-                        *stack = CardStack::LowAndHigh {
-                            low: card,
-                            high: *high,
-                        };
-                        return Ok(());
-                    } else if card.rank().unwrap().value() == high.rank().unwrap().value() + 1 {
-                        *stack = CardStack::LowAndHigh {
-                            low: *low,
-                            high: card,
-                        };
-                        return Ok(());
-                    }
-                }
+        for stack in self.card_stacks.iter_mut() {
+            if let Ok(new_stack) = stack.add(card) {
+                *stack = new_stack;
+                return Ok(());
             }
         }
-        Err(InvalidPlay)
+        Err(InvalidPlay::CardMismatch)
     }
 
     fn is_empty(&self) -> bool {
         self.card_stacks
-            .values()
-            .all(|stacks| stacks.iter().all(|stack| matches!(stack, CardStack::Empty)))
+            .iter()
+            .all(|stack| matches!(stack.stack_state, StackState::Empty))
     }
 
     /// Get a reference to the internal data structure.
-    pub fn stacks(&self) -> &HashMap<Suit, Vec<CardStack>> {
+    pub fn stacks(&self) -> &[CardStack] {
         &self.card_stacks
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("played card cannot be added to the playing area")]
-struct InvalidPlay;
+enum InvalidPlay {
+    StackFull,
+    SuitMismatch,
+    RankMismatch,
+    CardMismatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CardStack {
+    suit: Suit,
+    stack_state: StackState,
+}
 
 /// Played cards belonging to a single [`Suit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum CardStack {
+pub enum StackState {
     Empty,
     SevenOnly,
     LowOnly(Card),
     HighOnly(Card),
     LowAndHigh { low: Card, high: Card },
+}
+
+impl CardStack {
+    /// Create a new stack for `suit` cards.
+    pub fn new(suit: Suit) -> Self {
+        CardStack {
+            suit,
+            stack_state: StackState::Empty,
+        }
+    }
+
+    /// Create a new stack for `suit` cards with the initial `stack_state`.
+    fn new_with_stack_state(suit: Suit, stack_state: StackState) -> Self {
+        CardStack { suit, stack_state }
+    }
+
+    /// Add a card to the stack.
+    fn add(&self, card: Card) -> Result<Self, InvalidPlay> {
+        match (&self.suit, card.suit().unwrap()) {
+            (s1, s2) if s1 == s2 => match &self.stack_state {
+                StackState::Empty => {
+                    if card.rank().unwrap().value() == 7 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::SevenOnly,
+                        ))
+                    } else {
+                        Err(InvalidPlay::RankMismatch)
+                    }
+                }
+                StackState::SevenOnly => {
+                    if card.rank().unwrap().value() == 6 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowOnly(card),
+                        ))
+                    } else if card.rank().unwrap().value() == 8 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::HighOnly(card),
+                        ))
+                    } else {
+                        Err(InvalidPlay::RankMismatch)
+                    }
+                }
+                StackState::LowOnly(stack_card) => {
+                    if card.rank().unwrap().value() == stack_card.rank().unwrap().value() - 1 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowOnly(card),
+                        ))
+                    } else if card.rank().unwrap().value() == 8 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowAndHigh {
+                                low: *stack_card,
+                                high: card,
+                            },
+                        ))
+                    } else {
+                        Err(InvalidPlay::RankMismatch)
+                    }
+                }
+                StackState::HighOnly(stack_card) => {
+                    if card.rank().unwrap().value() == stack_card.rank().unwrap().value() + 1 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::HighOnly(card),
+                        ))
+                    } else if card.rank().unwrap().value() == 6 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowAndHigh {
+                                low: card,
+                                high: *stack_card,
+                            },
+                        ))
+                    } else {
+                        Err(InvalidPlay::RankMismatch)
+                    }
+                }
+                StackState::LowAndHigh { low, high } => {
+                    if card.rank().unwrap().value() == low.rank().unwrap().value() - 1 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowAndHigh {
+                                low: card,
+                                high: *high,
+                            },
+                        ))
+                    } else if card.rank().unwrap().value() == high.rank().unwrap().value() + 1 {
+                        Ok(CardStack::new_with_stack_state(
+                            self.suit,
+                            StackState::LowAndHigh {
+                                low: *low,
+                                high: card,
+                            },
+                        ))
+                    } else if low.rank().unwrap() == &Rank::Ace
+                        && high.rank().unwrap() == &Rank::King
+                    {
+                        Err(InvalidPlay::StackFull)
+                    } else {
+                        Err(InvalidPlay::RankMismatch)
+                    }
+                }
+            },
+            _ => Err(InvalidPlay::SuitMismatch),
+        }
+    }
+
+    /// Get the suit of the stack.
+    pub fn suit(&self) -> &Suit {
+        &self.suit
+    }
+
+    /// Get the state of the stack.
+    pub fn stack_state(&self) -> &StackState {
+        &self.stack_state
+    }
 }
 
 impl BadamSat {
@@ -276,52 +355,50 @@ impl BadamSat {
             .playing_area
             .card_stacks
             .iter()
-            .flat_map(|(suit, stacks)| {
-                stacks.iter().flat_map(|stack| {
-                    let mut cards = HashSet::with_capacity(2);
-                    match stack {
-                        CardStack::Empty => {
-                            cards.insert(Card::new_normal(*suit, Rank::new(7)));
-                        }
-                        CardStack::SevenOnly => {
-                            cards.insert(Card::new_normal(*suit, Rank::new(8)));
-                            cards.insert(Card::new_normal(*suit, Rank::new(6)));
-                        }
-                        CardStack::LowOnly(card) => {
-                            cards.insert(Card::new_normal(*suit, Rank::new(8)));
-                            if card.rank().unwrap().value() != 1 {
-                                cards.insert(Card::new_normal(
-                                    *suit,
-                                    Rank::new(card.rank().unwrap().value() - 1),
-                                ));
-                            }
-                        }
-                        CardStack::HighOnly(card) => {
-                            cards.insert(Card::new_normal(*suit, Rank::new(6)));
-                            if card.rank().unwrap().value() != 13 {
-                                cards.insert(Card::new_normal(
-                                    *suit,
-                                    Rank::new(card.rank().unwrap().value() + 1),
-                                ));
-                            }
-                        }
-                        CardStack::LowAndHigh { low, high } => {
-                            if low.rank().unwrap().value() != 1 {
-                                cards.insert(Card::new_normal(
-                                    *suit,
-                                    Rank::new(low.rank().unwrap().value() - 1),
-                                ));
-                            }
-                            if high.rank().unwrap().value() != 13 {
-                                cards.insert(Card::new_normal(
-                                    *suit,
-                                    Rank::new(high.rank().unwrap().value() + 1),
-                                ));
-                            }
+            .flat_map(|stack| {
+                let mut cards = HashSet::with_capacity(2);
+                match stack.stack_state {
+                    StackState::Empty => {
+                        cards.insert(Card::new_normal(stack.suit, Rank::new(7)));
+                    }
+                    StackState::SevenOnly => {
+                        cards.insert(Card::new_normal(stack.suit, Rank::new(8)));
+                        cards.insert(Card::new_normal(stack.suit, Rank::new(6)));
+                    }
+                    StackState::LowOnly(card) => {
+                        cards.insert(Card::new_normal(stack.suit, Rank::new(8)));
+                        if card.rank().unwrap().value() != 1 {
+                            cards.insert(Card::new_normal(
+                                stack.suit,
+                                Rank::new(card.rank().unwrap().value() - 1),
+                            ));
                         }
                     }
-                    cards
-                })
+                    StackState::HighOnly(card) => {
+                        cards.insert(Card::new_normal(stack.suit, Rank::new(6)));
+                        if card.rank().unwrap().value() != 13 {
+                            cards.insert(Card::new_normal(
+                                stack.suit,
+                                Rank::new(card.rank().unwrap().value() + 1),
+                            ));
+                        }
+                    }
+                    StackState::LowAndHigh { low, high } => {
+                        if low.rank().unwrap().value() != 1 {
+                            cards.insert(Card::new_normal(
+                                stack.suit,
+                                Rank::new(low.rank().unwrap().value() - 1),
+                            ));
+                        }
+                        if high.rank().unwrap().value() != 13 {
+                            cards.insert(Card::new_normal(
+                                stack.suit,
+                                Rank::new(high.rank().unwrap().value() + 1),
+                            ));
+                        }
+                    }
+                }
+                cards
             })
             .collect();
         let player_cards = self.players[player_idx].unique_cards_in_hand();
