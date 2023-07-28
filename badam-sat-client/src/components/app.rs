@@ -163,7 +163,7 @@ enum JoinResponse {
 }
 
 async fn create_room(players: usize, decks: usize) -> Result<RoomPayload, AppError> {
-    let response = Request::post("/api/create_room")
+    let response = Request::post("/badam_sat/api/create_room")
         .json(&json!({ "players": players, "decks": decks }))
         .unwrap()
         .send()
@@ -173,7 +173,7 @@ async fn create_room(players: usize, decks: usize) -> Result<RoomPayload, AppErr
 }
 
 async fn join_room(payload: RoomPayload) -> Result<JoinResponse, AppError> {
-    let response = Request::post("/api/join")
+    let response = Request::post("/badam_sat/api/join")
         .json(&payload)
         .unwrap()
         .send()

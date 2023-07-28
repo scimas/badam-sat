@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 cd badam-sat-client
-trunk build --release
+trunk build --release --public-url /badam_sat
 
 cd ../badam-sat-server
 cargo build --release

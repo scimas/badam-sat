@@ -81,7 +81,7 @@ async fn main() {
     }
 
     let serve_dir = ServeDir::new("dist");
-    let router = Router::new()
+    let badam_sat_router = Router::new()
         .route("/api/create_room", post(create_room))
         .route("/api/join", post(join))
         .route("/api/play", post(play))
@@ -91,6 +91,8 @@ async fn main() {
         .route("/api/last_move", get(last_move))
         .fallback_service(serve_dir)
         .with_state(server.clone());
+
+    let app_router = Router::new().nest("/badam_sat", badam_sat_router);
 
     let address: SocketAddr = args.address.parse().unwrap();
 
@@ -105,12 +107,12 @@ async fn main() {
         .await
         .unwrap();
         axum_server::bind_rustls(address, tls_config)
-            .serve(router.into_make_service())
+            .serve(app_router.into_make_service())
             .await
             .unwrap();
     } else {
         axum::Server::bind(&address)
-            .serve(router.into_make_service())
+            .serve(app_router.into_make_service())
             .await
             .unwrap();
     };

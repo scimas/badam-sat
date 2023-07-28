@@ -121,7 +121,7 @@ impl Component for Player {
 }
 
 async fn query_hand(token: &str) -> HashMap<Suit, Vec<Card>> {
-    let response = Request::get("/api/my_hand")
+    let response = Request::get("/badam_sat/api/my_hand")
         .header("Authorization", &format!("Bearer {token}"))
         .send()
         .await
@@ -146,7 +146,7 @@ async fn query_hand(token: &str) -> HashMap<Suit, Vec<Card>> {
 }
 
 async fn play(token: &str, action: &Action) {
-    match Request::post("/api/play")
+    match Request::post("/badam_sat/api/play")
         .header("Authorization", &format!("Bearer {token}"))
         .json(action)
         .unwrap()
@@ -169,7 +169,7 @@ pub enum Action {
 }
 
 async fn query_winner(room_id: Uuid) {
-    match Request::get("/api/winner")
+    match Request::get("/badam_sat/api/winner")
         .query([("room_id", room_id.to_string())])
         .send()
         .await

@@ -113,7 +113,7 @@ impl Component for PlayingArea {
 }
 
 async fn query_play_area(room_id: Uuid) -> HashMap<Suit, Vec<CardStack>> {
-    let response = Request::get("/api/playing_area")
+    let response = Request::get("/badam_sat/api/playing_area")
         .query([("room_id", room_id.to_string())])
         .send()
         .await
@@ -123,7 +123,7 @@ async fn query_play_area(room_id: Uuid) -> HashMap<Suit, Vec<CardStack>> {
 }
 
 async fn query_last_move(room_id: Uuid) -> Option<Action> {
-    let response = Request::get("/api/last_move")
+    let response = Request::get("/badam_sat/api/last_move")
         .query([("room_id", room_id.to_string())])
         .send()
         .await
