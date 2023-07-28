@@ -48,19 +48,21 @@ impl Component for PlayingArea {
     fn view(&self, _ctx: &yew::Context<Self>) -> yew::Html {
         html! {
             <div class="play_area">
-            {
-                self.card_stacks
-                    .iter()
-                    .map(|stack| {
-                        html! {
-                            <div class={stack.suit().name().to_string()}>
-                                {
-                                    stack_to_html(stack.suit(), stack, self.glow.as_ref())
-                                }
-                            </div>
+                {
+                Suit::all_suits().iter().map(|suit| html! {
+                    <div class={suit.name().to_string() + " played_stacks"}>
+                        {
+                            self.card_stacks
+                                .iter()
+                                .filter(|stack| stack.suit() == suit)
+                                .map(|stack| {
+                                    stack_to_html(suit, stack, self.glow.as_ref())
+                                })
+                                .collect::<Html>()
                         }
-                    })
-                    .collect::<Html>()
+                    </div>
+                })
+                .collect::<Html>()
             }
             </div>
         }

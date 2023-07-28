@@ -35,6 +35,10 @@
     justify-items: center;
 }
 
+.played_stacks {
+    display: inline-block;
+}
+
 .stack {
     display: grid;
     grid-template-rows: repeat(3, 1fr);
@@ -69,7 +73,7 @@
 }
 
 p {
-    margin: 5px;
+    margin: 0;
 }
 
 .glow {
@@ -83,5 +87,9 @@ p {
 
     .stack {
         font-size: 30px;
+    }
+
+    .played_stacks {
+        display: flex;
     }
 }
