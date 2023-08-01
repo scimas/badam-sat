@@ -1,4 +1,4 @@
-use std::{fs::File, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Query, State},
@@ -6,19 +6,13 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use axum_server::tls_rustls::RustlsConfig;
 use badam_sat::games::PlayingArea;
 use card_deck::standard_deck::Card;
-use clap::Parser;
 use errors::Error;
-use pasetors::{
-    keys::{AsymmetricKeyPair, AsymmetricPublicKey, AsymmetricSecretKey},
-    version4::V4,
-};
+use pasetors::{keys::AsymmetricKeyPair, version4::V4};
 use rooms::{Action, Winner};
 use serde::{Deserialize, Serialize};
 use server::{AuthenticatedPlayer, Server};
-use simple_logger::SimpleLogger;
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
@@ -29,59 +23,16 @@ mod errors;
 mod rooms;
 mod server;
 
-/// बदाम सात game server
-#[derive(Debug, Parser)]
-#[command(author = "scimas", version, about, long_about = None)]
-struct Args {
-    /// Path to the signing key for token generation
-    ///
-    /// This must be an ED25519 key.
-    #[arg(long)]
-    signing_key: String,
-
-    /// Address for the server
-    #[arg(long, default_value = "127.0.0.1:8080")]
-    address: String,
-
-    /// Use TLS
-    #[arg(long)]
-    secure: bool,
-
-    /// Path to the directory containing the TLS key and certificate
-    ///
-    /// Required when using the `--secure` option
-    #[arg(long)]
-    tls_dir: Option<String>,
-
-    /// Maximum simultaneous game rooms the server is allowed to host
-    #[arg(long, default_value_t = 1<<6)]
+/// Create a router for बदाम सात.
+pub fn badam_sat_router<P: AsRef<Path>>(
+    key_pair: AsymmetricKeyPair<V4>,
     max_rooms: usize,
-}
+    frontend_path: P,
+) -> (Router, Arc<RwLock<Server>>) {
+    let server = Arc::new(RwLock::new(Server::new(key_pair, max_rooms)));
 
-#[tokio::main]
-async fn main() {
-    SimpleLogger::new()
-        .with_level(log::LevelFilter::Warn)
-        .init()
-        .unwrap();
-    let args = Args::parse();
-
-    let mut sign_key_file = File::open(&args.signing_key).unwrap();
-    let paseto_key = read_key_pair(&mut sign_key_file).unwrap();
-
-    let server = Arc::new(RwLock::new(Server::new(paseto_key, args.max_rooms)));
-    {
-        let server = server.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(120)).await;
-                server.write().await.remove_finished_rooms();
-            }
-        });
-    }
-
-    let serve_dir = ServeDir::new("dist");
-    let badam_sat_router = Router::new()
+    let serve_dir = ServeDir::new(frontend_path);
+    let router = Router::new()
         .route("/api/create_room", post(create_room))
         .route("/api/join", post(join))
         .route("/api/play", post(play))
@@ -92,48 +43,7 @@ async fn main() {
         .fallback_service(serve_dir)
         .with_state(server.clone());
 
-    let app_router = Router::new().nest("/badam_sat", badam_sat_router);
-
-    let address: SocketAddr = args.address.parse().unwrap();
-
-    if args.secure {
-        let tls_dir = args
-            .tls_dir
-            .expect("`--tls-dir` needs to be specified when using `--secure`");
-        let tls_config = RustlsConfig::from_pem_file(
-            PathBuf::from(&tls_dir).join("cert.pem"),
-            PathBuf::from(&tls_dir).join("key.pem"),
-        )
-        .await
-        .unwrap();
-        axum_server::bind_rustls(address, tls_config)
-            .serve(app_router.into_make_service())
-            .await
-            .unwrap();
-    } else {
-        axum::Server::bind(&address)
-            .serve(app_router.into_make_service())
-            .await
-            .unwrap();
-    };
-}
-
-fn read_key_pair<T: std::io::Read>(reader: &mut T) -> std::io::Result<AsymmetricKeyPair<V4>> {
-    let mut key_data = String::new();
-    reader.read_to_string(&mut key_data).unwrap();
-    let key = ed25519_compact::KeyPair::from_pem(&key_data).map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "could not deserialize key from key data",
-        )
-    })?;
-    let sk = AsymmetricSecretKey::<V4>::from(key.sk.as_ref()).expect("could not create secret key");
-    let pk = AsymmetricPublicKey::<V4>::from(key.pk.as_ref()).expect("could not create public key");
-    let paseto_key = AsymmetricKeyPair {
-        secret: sk,
-        public: pk,
-    };
-    Ok(paseto_key)
+    (router, server)
 }
 
 async fn create_room(
