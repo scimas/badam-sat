@@ -1,15 +1,13 @@
 [package]
 name = "badam-sat-client"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-badam-sat = { path = "../badam-sat", version = "0.1.0", features = [
-    "serde",
-] }
-card-deck = { git = "https://github.com/scimas/card-deck.git", version = "0.1.0", features = [
+badam-sat = { path = "../badam-sat", version = "0.2.0", features = ["serde"] }
+card-deck = { git = "https://github.com/scimas/card-deck.git", version = "0.2.1", tag = "v0.2.1", features = [
     "serde",
     "standard-deck",
 ] }
@@ -18,7 +16,8 @@ getrandom = { version = "0.2.10", features = ["js"] }
 gloo-dialogs = "0.1.1"
 gloo-net = "0.3.0"
 gloo-utils = "0.1.7"
-serde = { version = "1.0.172", features = ["derive"] }
+# https://github.com/serde-rs/serde/issues/2538
+serde = { version = ">= 1.0, <= 1.0.171", features = ["derive"] }
 serde_json = "1.0.103"
 thiserror = "1.0.44"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }

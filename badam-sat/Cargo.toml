@@ -1,16 +1,19 @@
 [package]
 name = "badam-sat"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-card-deck = { git="https://github.com/scimas/card-deck.git", version = "0.1.0", features = [
+card-deck = { git = "https://github.com/scimas/card-deck.git", version = "0.2.1", tag = "v0.2.1", features = [
     "standard-deck",
 ] }
 rand = "0.8.5"
-serde = { version = "1.0.171", features = ["derive"], optional = true }
+# https://github.com/serde-rs/serde/issues/2538
+serde = { version = ">= 1.0, <= 1.0.171", features = [
+    "derive",
+], optional = true }
 thiserror = "1.0.40"
 
 [features]
