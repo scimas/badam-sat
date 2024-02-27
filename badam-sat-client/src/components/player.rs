@@ -27,7 +27,6 @@ pub enum Msg {
     Hand(HashMap<Suit, Vec<Card>>),
     Play(Card),
     Pass,
-    QueryWinner,
 }
 
 #[derive(Debug, PartialEq, Properties)]
@@ -42,7 +41,6 @@ impl Component for Player {
 
     fn create(ctx: &yew::Context<Self>) -> Self {
         ctx.link().send_message(Msg::QueryHand);
-        ctx.link().send_message(Msg::QueryWinner);
         Player::default()
     }
 
@@ -109,13 +107,6 @@ impl Component for Player {
                 }
                 false
             }
-            Msg::QueryWinner => {
-                {
-                    let room_id = ctx.props().room_id;
-                    wasm_bindgen_futures::spawn_local(query_winner(room_id));
-                }
-                false
-            }
         }
     }
 }
@@ -166,21 +157,6 @@ async fn play(token: &str, action: &Action) {
 pub enum Action {
     Play(Card),
     Pass,
-}
-
-async fn query_winner(room_id: Uuid) {
-    match Request::get("/badam_sat/api/winner")
-        .query([("room_id", room_id.to_string())])
-        .send()
-        .await
-    {
-        Ok(response) => {
-            let winner: serde_json::Value = response.json().await.unwrap();
-            let winner_id = winner.get("id").unwrap().as_u64().unwrap() + 1;
-            gloo_dialogs::alert(&format!("Player number {winner_id} won the game"));
-        }
-        Err(_) => gloo_dialogs::alert("Server error"),
-    }
 }
 
 fn card_comparator(c1: &Card, c2: &Card) -> std::cmp::Ordering {

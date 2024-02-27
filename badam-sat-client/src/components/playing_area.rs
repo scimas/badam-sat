@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use badam_sat::games::{CardStack, StackState};
 use card_deck::standard_deck::{Card, Rank, Suit};
 use futures_util::FutureExt;
 use gloo_net::http::Request;
 use serde::Deserialize;
 use uuid::Uuid;
-use yew::{html, Component, Html, Properties};
+use yew::{html, platform::time::sleep, Component, Html, Properties};
 
 use super::player::Action;
 
@@ -12,6 +14,7 @@ use super::player::Action;
 pub struct PlayingArea {
     card_stacks: Vec<CardStack>,
     glow: Option<Card>,
+    card_counts: Vec<usize>,
 }
 
 impl Default for PlayingArea {
@@ -20,13 +23,14 @@ impl Default for PlayingArea {
         PlayingArea {
             card_stacks,
             glow: None,
+            card_counts: vec![],
         }
     }
 }
 
 pub enum Msg {
-    QueryPlayArea,
-    PlayArea(Vec<CardStack>),
+    QueryGameState,
+    GameState(GameState),
     QueryLastMove,
     LastMove(Option<Action>),
 }
@@ -41,47 +45,65 @@ impl Component for PlayingArea {
     type Properties = Props;
 
     fn create(ctx: &yew::Context<Self>) -> Self {
-        ctx.link().send_message(Msg::QueryPlayArea);
+        ctx.link().send_message(Msg::QueryGameState);
         PlayingArea::default()
     }
 
     fn view(&self, _ctx: &yew::Context<Self>) -> yew::Html {
         html! {
-            <div class="play_area">
-                {
-                Suit::all_suits().iter().map(|suit| html! {
-                    <div class={suit.name().to_string() + " played_stacks"}>
-                        {
-                            self.card_stacks
-                                .iter()
-                                .filter(|stack| stack.suit() == suit)
-                                .map(|stack| {
-                                    stack_to_html(suit, stack, self.glow.as_ref())
-                                })
-                                .collect::<Html>()
-                        }
-                    </div>
-                })
-                .collect::<Html>()
-            }
-            </div>
+            <>
+                <div class="card_counts">
+                    {
+                        self.card_counts
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, count)| html! {
+                                <div class="card_count">{ format!("Player {idx}: {count}") }</div>
+                            })
+                            .collect::<Html>()
+                    }
+                </div>
+                <div class="play_area">
+                    {
+                    Suit::all_suits().iter().map(|suit| html! {
+                        <div class={suit.name().to_string() + " played_stacks"}>
+                            {
+                                self.card_stacks
+                                    .iter()
+                                    .filter(|stack| stack.suit() == suit)
+                                    .map(|stack| {
+                                        stack_to_html(suit, stack, self.glow.as_ref())
+                                    })
+                                    .collect::<Html>()
+                            }
+                        </div>
+                    })
+                    .collect::<Html>()
+                }
+                </div>
+            </>
         }
     }
 
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::QueryPlayArea => {
+            Msg::QueryGameState => {
                 ctx.link()
-                    .send_future(query_play_area(ctx.props().room_id).map(Msg::PlayArea));
+                    .send_future(query_game_state(ctx.props().room_id).map(Msg::GameState));
                 false
             }
-            Msg::PlayArea(stacks) => {
-                ctx.link().send_message(Msg::QueryPlayArea);
-                if self.card_stacks != stacks {
+            Msg::GameState(state) => {
+                if self.card_counts != state.card_counts {
+                    ctx.link().send_message(Msg::QueryGameState);
                     ctx.link().send_message(Msg::QueryLastMove);
-                    self.card_stacks = stacks;
+                    self.card_counts = state.card_counts;
+                    self.card_stacks = state.playing_area.stacks().to_vec();
                     return true;
                 }
+                ctx.link().send_future(async {
+                    sleep(Duration::from_secs(5)).await;
+                    Msg::QueryGameState
+                });
                 false
             }
             Msg::QueryLastMove => {
@@ -106,14 +128,13 @@ impl Component for PlayingArea {
     }
 }
 
-async fn query_play_area(room_id: Uuid) -> Vec<CardStack> {
-    let response = Request::get("/badam_sat/api/playing_area")
+async fn query_game_state(room_id: Uuid) -> GameState {
+    let response = Request::get("/badam_sat/api/game_state")
         .query([("room_id", room_id.to_string())])
         .send()
         .await
         .unwrap();
-    let stacks: badam_sat::games::PlayingArea = response.json().await.unwrap();
-    stacks.stacks().to_vec()
+    response.json().await.unwrap()
 }
 
 async fn query_last_move(room_id: Uuid) -> Option<Action> {
@@ -137,6 +158,12 @@ enum LastMoveResponse {
         #[serde(rename = "error")]
         _error: String,
     },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GameState {
+    playing_area: badam_sat::games::PlayingArea,
+    card_counts: Vec<usize>,
 }
 
 fn stack_to_html(suit: &Suit, stack: &CardStack, glow: Option<&Card>) -> Html {
