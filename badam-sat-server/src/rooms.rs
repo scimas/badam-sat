@@ -57,10 +57,6 @@ impl Room {
                 log::warn!("sending data to server from room failed, exiting");
                 break; // The server dropped?? Need to figure out how to handle this better. Logging?
             }
-            if self.is_game_over() {
-                log::info!("game over, exiting room");
-                break;
-            }
         }
     }
 
