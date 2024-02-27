@@ -58,6 +58,7 @@ impl Room {
                 break; // The server dropped?? Need to figure out how to handle this better. Logging?
             }
         }
+        log::info!("no client activity for 5 minutes, exiting room");
     }
 
     /// Try to join the room.
