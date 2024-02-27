@@ -1,42 +1,71 @@
+use std::time::Duration;
+
 use badam_sat::games::{BadamSat, PlayingArea, Transition};
 use card_deck::standard_deck::Card;
 use pasetors::claims::Claims;
 use serde::{Deserialize, Serialize};
-use tokio::sync::watch;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::timeout,
+};
 
-use crate::errors::{ClientError, Error};
+use crate::{errors::Error, server::ServerRoomMessage};
 
 #[derive(Debug)]
 pub struct Room {
     joined_players: usize,
     game: BadamSat,
     max_player_count: usize,
-    play_area_sender: watch::Sender<PlayingArea>,
-    winner_sender: watch::Sender<Winner>,
     last_move: Option<Action>,
 }
 
 impl Room {
     /// Create a new room that can accommodate given amount of players and card
     /// decks.
-    pub fn new(players: usize, decks: usize) -> Self {
+    pub fn spawn(players: usize, decks: usize, receiver: mpsc::Receiver<ServerRoomMessage>) {
         let game = BadamSat::with_player_and_deck_capacity(players, decks);
-        let (play_area_sender, _) = watch::channel(game.playing_area().clone());
-        let (winner_sender, _) = watch::channel(Winner { id: usize::MAX });
-        Room {
+        let room = Room {
             joined_players: 0,
             game,
             max_player_count: players,
-            play_area_sender,
-            winner_sender,
             last_move: None,
+        };
+        tokio::spawn(room.run(receiver));
+    }
+
+    async fn run(mut self, mut receiver: mpsc::Receiver<ServerRoomMessage>) {
+        fn respond<T>(responder: oneshot::Sender<T>, msg: T) -> bool {
+            responder.send(msg).is_ok()
+        }
+
+        while let Ok(Some(msg)) = timeout(Duration::from_secs(5 * 60), receiver.recv()).await {
+            let success = match msg {
+                ServerRoomMessage::AddPlayer(responder) => respond(responder, self.join()),
+                ServerRoomMessage::Play {
+                    action,
+                    player,
+                    responder,
+                } => respond(responder, self.play(action, player)),
+                ServerRoomMessage::GameOver(responder) => respond(responder, self.is_game_over()),
+                ServerRoomMessage::LastMove(responder) => respond(responder, self.last_move),
+                ServerRoomMessage::Hand { player, responder } => {
+                    respond(responder, self.hand_of_player(player))
+                }
+                ServerRoomMessage::GameState(responder) => respond(responder, self.game_state()),
+            };
+            if !success {
+                break; // The server dropped?? Need to figure out how to handle this better. Logging?
+            }
+            if self.is_game_over() {
+                break;
+            }
         }
     }
 
     /// Try to join the room.
     pub fn join(&mut self) -> Result<Claims, Error> {
         if self.is_full() {
-            return Err(Error::ClientError(ClientError::RoomFull));
+            return Err(Error::RoomFull);
         }
         let mut claim = Claims::new().unwrap();
         claim.subject(&self.joined_players.to_string()).unwrap();
@@ -55,7 +84,7 @@ impl Room {
     /// Attempt to play a card.
     pub fn play(&mut self, action: Action, player: usize) -> Result<(), Error> {
         if !self.is_full() {
-            return Err(Error::ClientError(ClientError::TooEarly));
+            return Err(Error::TooEarly);
         }
         let transition = match action {
             Action::Play(card) => Transition::Play { player, card },
@@ -63,17 +92,12 @@ impl Room {
         };
         match self.game.update(transition) {
             Ok(_) => {
-                self.play_area_sender
-                    .send_replace(self.playing_area().clone());
-                if let Some(id) = self.game.winner() {
-                    self.winner_sender.send_replace(Winner { id });
-                }
                 if matches!(action, Action::Play(..)) {
                     self.last_move = Some(action);
                 }
                 Ok(())
             }
-            Err(_) => Err(Error::ClientError(ClientError::InvalidMove)),
+            Err(_) => Err(Error::InvalidMove),
         }
     }
 
@@ -83,21 +107,11 @@ impl Room {
     }
 
     /// Get the hand of a player.
-    pub fn hand_of_player(&self, player: usize) -> Result<&[Card], Error> {
+    pub fn hand_of_player(&self, player: usize) -> Result<Vec<Card>, Error> {
         self.game
             .hand_of_player(player)
-            .ok_or(Error::ClientError(ClientError::InvalidPlayerId))
-    }
-
-    /// Get the notifier channel that communicates when the room's playing area
-    /// changes.
-    pub fn play_area_sender(&self) -> &watch::Sender<PlayingArea> {
-        &self.play_area_sender
-    }
-
-    /// Get the notifier channel that communicates when the room has a winner.
-    pub fn winner_sender(&self) -> &watch::Sender<Winner> {
-        &self.winner_sender
+            .map(|cards| cards.to_vec())
+            .ok_or(Error::InvalidPlayerId)
     }
 
     /// Check whether the game is over.
@@ -105,9 +119,13 @@ impl Room {
         self.game.winner().is_some()
     }
 
-    /// Get the last played valid move.
-    pub fn last_move(&self) -> Option<&Action> {
-        self.last_move.as_ref()
+    pub fn game_state(&self) -> GameState {
+        GameState {
+            playing_area: self.playing_area().clone(),
+            card_counts: (0..self.joined_players)
+                .map(|player| self.game.hand_len(player).unwrap())
+                .collect(),
+        }
     }
 }
 
@@ -122,4 +140,11 @@ pub enum Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Winner {
     id: usize,
+}
+
+/// Game state that does not reveal players' cards, so can be communicated with everyone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GameState {
+    playing_area: PlayingArea,
+    card_counts: Vec<usize>,
 }

@@ -20,6 +20,7 @@ pasetors = { version = "0.6.7", features = [
 # https://github.com/serde-rs/serde/issues/2538
 serde = { version = ">= 1.0, <= 1.0.171", features = ["derive"] }
 serde_json = "1.0.103"
+thiserror = "1.0.57"
 tokio = { version = "1.29.1", features = ["macros"] }
 tower-http = { version = "0.4.3", features = ["fs"] }
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
