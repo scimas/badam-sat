@@ -94,10 +94,19 @@ impl Component for PlayingArea {
             }
             Msg::GameState(state) => {
                 if self.card_counts != state.card_counts {
-                    ctx.link().send_message(Msg::QueryGameState);
                     ctx.link().send_message(Msg::QueryLastMove);
                     self.card_counts = state.card_counts;
                     self.card_stacks = state.playing_area.stacks().to_vec();
+                    if let Some(idx) = self
+                        .card_counts
+                        .iter()
+                        .enumerate()
+                        .find_map(|(idx, count)| if *count == 0 { Some(idx) } else { None })
+                    {
+                        gloo_dialogs::alert(&format!("Player {idx} won!"));
+                    } else {
+                        ctx.link().send_message(Msg::QueryGameState);
+                    }
                     return true;
                 }
                 ctx.link().send_future(async {
