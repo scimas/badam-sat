@@ -81,6 +81,7 @@ impl Server {
                 }
             };
             if !success {
+                log::warn!("failed to send to api, exiting");
                 break;
             }
             self.rooms.retain(|_, sender| !sender.is_closed());
