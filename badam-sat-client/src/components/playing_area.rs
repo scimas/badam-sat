@@ -15,6 +15,7 @@ pub struct PlayingArea {
     card_stacks: Vec<CardStack>,
     glow: Option<Card>,
     card_counts: Vec<usize>,
+    game_started: bool,
 }
 
 impl Default for PlayingArea {
@@ -24,6 +25,7 @@ impl Default for PlayingArea {
             card_stacks,
             glow: None,
             card_counts: vec![],
+            game_started: false,
         }
     }
 }
@@ -93,10 +95,13 @@ impl Component for PlayingArea {
                 false
             }
             Msg::GameState(state) => {
-                if self.card_counts != state.card_counts {
-                    ctx.link().send_message(Msg::QueryLastMove);
+                let stacks = state.playing_area.stacks().to_vec();
+                if !self.game_started && self.card_stacks != stacks {
+                    self.game_started = true;
+                }
+                if self.game_started && self.card_counts != state.card_counts {
                     self.card_counts = state.card_counts;
-                    self.card_stacks = state.playing_area.stacks().to_vec();
+                    self.card_stacks = stacks;
                     if let Some(idx) = self
                         .card_counts
                         .iter()
@@ -107,6 +112,7 @@ impl Component for PlayingArea {
                     } else {
                         ctx.link().send_message(Msg::QueryGameState);
                     }
+                    ctx.link().send_message(Msg::QueryLastMove);
                     return true;
                 }
                 ctx.link().send_future(async {
